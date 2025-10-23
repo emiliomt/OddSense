@@ -55,8 +55,8 @@ Provide a brief analysis (3-4 sentences) covering:
 Keep it concise, informative, and focused on actionable insights for traders."""
 
         try:
-            # Using gpt-5 model as per OpenAI blueprint
-            # Note: gpt-5 doesn't support temperature parameter
+            # Using gpt-5 model - a reasoning model that uses hidden reasoning tokens
+            # Need higher max_completion_tokens since reasoning consumes tokens too
             response = self.client.chat.completions.create(
                 model="gpt-5",
                 messages=[
@@ -69,14 +69,39 @@ Keep it concise, informative, and focused on actionable insights for traders."""
                         "content": prompt
                     }
                 ],
-                max_completion_tokens=500
+                max_completion_tokens=5000,  # Increased from 500 to account for reasoning tokens
+                reasoning_effort="low"  # Use low effort for simple analysis tasks
             )
             
-            content = response.choices[0].message.content
-            return content if content else "Unable to generate market brief: No content returned"
+            # Debug logging for response analysis
+            choice = response.choices[0]
+            print(f"[DEBUG] OpenAI Response Details:")
+            print(f"  - finish_reason: {choice.finish_reason}")
+            print(f"  - content: {choice.message.content}")
+            print(f"  - refusal: {getattr(choice.message, 'refusal', None)}")
+            print(f"  - usage: {response.usage}")
+            
+            # Check for refusal
+            if hasattr(choice.message, 'refusal') and choice.message.refusal:
+                return f"Unable to generate market brief: Model refused - {choice.message.refusal}"
+            
+            # Check finish reason
+            if choice.finish_reason == "length":
+                return "Unable to generate market brief: Response was cut off (token limit). Try viewing a different market."
+            
+            # Get content
+            content = choice.message.content
+            
+            if content:
+                return content
+            else:
+                # Provide detailed debugging info if content is empty
+                debug_info = f"finish_reason={choice.finish_reason}, has_refusal={hasattr(choice.message, 'refusal')}"
+                return f"Unable to generate market brief: No content returned ({debug_info})"
         
         except Exception as e:
-            return f"Unable to generate market brief: {str(e)}"
+            print(f"[ERROR] OpenAI API Exception: {type(e).__name__}: {str(e)}")
+            return f"Unable to generate market brief: {type(e).__name__}: {str(e)}"
     
     def generate_quick_insight(self, title: str, probability: float, volume: int) -> str:
         """
