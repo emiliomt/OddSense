@@ -4,6 +4,13 @@ This is an NFL prediction markets explorer built with Streamlit that integrates 
 
 # Recent Changes (October 23, 2025)
 
+## Latest Update: Game Contracts Only
+- **Switched to Professional Football Game series filtering** using `series_ticker=KXNFLGAME`
+- App now displays **only standalone game outcome contracts** (one contract per row)
+- Each market represents one team winning a specific game (e.g., "Seattle at Washington Winner?")
+- **Removed multivariate/parlay markets** from the display
+- Clean, simple market names without comma-separated conditions
+
 ## Market Display Reorganization
 - Implemented **normalization layer** that transforms raw Kalshi API data into display-ready format
 - Markets now grouped by **high-level categories** (Games, Passing Yards, Rushing Yards, Anytime Touchdowns, etc.)
@@ -68,12 +75,11 @@ The `KalshiService` class includes a comprehensive normalization pipeline that t
 
 ## Pagination Implementation
 The app implements **true server-side cursor-based pagination**:
-- Fetches fresh data from Kalshi API for each page navigation
+- Fetches fresh data from Kalshi API for each page navigation using `series_ticker=KXNFLGAME`
 - Stores cursors in session state (`page_cursors` list)
-- Filters for NFL markets client-side (~98.5% of markets are NFL)
-- Returns all filtered results without truncation to avoid losing markets
-- Pages may vary slightly in size (95-100 markets) due to client-side NFL filtering
+- Returns all game outcome markets (no client-side filtering needed)
 - Next/Previous buttons trigger new API calls with appropriate cursors
+- Consistent page sizes since all results are game markets
 
 ## Data Visualization
 **Plotly** is used for interactive charts and graphs (imported in `app.py`). This was chosen over simpler charting libraries to provide rich, interactive visualizations of market data including price movements, volume, and probability distributions.
@@ -95,18 +101,18 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 ### Kalshi Trading API
 - **Endpoint**: `https://api.elections.kalshi.com/trade-api/v2`
 - **Authentication**: Currently using unauthenticated public endpoints
-- **Purpose**: Fetches NFL prediction market data including prices, volume, and open interest
+- **Purpose**: Fetches Professional Football Game prediction markets
 - **Key Methods**: 
-  - `GET /markets` with pagination cursor support
-  - Filtering for NFL-specific markets client-side (event_ticker contains "NFL")
+  - `GET /markets?series_ticker=KXNFLGAME` to fetch game outcome contracts
+  - Pagination cursor support for navigating through markets
   - `GET /markets/{ticker}` for detailed market information
   - `GET /markets/{ticker}/history` for price history
   - `GET /markets/{ticker}/orderbook` for current order book
 - **Data Structure**: 
   - Prices in cents (0-100): `yes_bid`, `no_bid`, `last_price`, `mid_price`
   - Volume fields: `volume`, `volume_24h`, `liquidity`
-  - Multivariate markets have comma-separated leg descriptions in title
-- **Note**: API does not support server-side NFL filtering via parameters, so client-side filtering is applied
+  - Game markets are simple binary outcomes (one team wins)
+- **Filtering**: Uses `series_ticker=KXNFLGAME` to fetch only Professional Football Game markets server-side
 
 ### OpenAI API
 - **Model**: GPT-5 (current as of August 2025)
@@ -128,8 +134,8 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 - Session state managed in-memory by Streamlit
 
 ## Data Flow
-1. User searches/browses markets → Kalshi API call with cursor-based pagination
-2. Market data filtered for NFL markets client-side
+1. User searches/browses markets → Kalshi API call with `series_ticker=KXNFLGAME` and cursor-based pagination
+2. Game outcome markets returned from API (no filtering needed)
 3. Markets normalized through `KalshiService.normalize_market()`
 4. Markets grouped into nested structure: {category: {matchup: [markets]}}
 5. Displayed with Category → Matchup → Markets hierarchy
@@ -141,8 +147,8 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 
 # Known Limitations & Behavior Notes
 - Client-side search only filters current page results (not across all pages)
-- Page sizes may vary slightly (95-100 markets) due to NFL filtering after fetching
 - Some markets may lack historical price data (handled gracefully with info messages)
 - OpenAI API quota limitations may prevent AI brief generation (displays error message)
-- **Multivariate/Parlay Markets**: Markets in "Same Game Parlays" category may show the same player multiple times (e.g., "Ladd McConkey,Justin Herbert: 250+,Ladd McConkey: 60+"). This is NOT a bug—it represents combination bets where a player appears in multiple bet legs (e.g., "Ladd McConkey scores TD" AND "Ladd McConkey 60+ yards"). This reflects Kalshi's actual market structure.
 - Markets with no active bids show 0% probability and $0 volume (expected behavior, not a bug)
+- App displays **only game outcome contracts** - no player props, parlays, or other market types
+- Each game has 2 markets in the API (one for each team outcome)
