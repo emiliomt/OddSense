@@ -12,32 +12,42 @@ class KalshiService:
     
     def get_nfl_markets(self, limit: int = 100, cursor: Optional[str] = None) -> Dict:
         """
-        Fetch NFL markets from Kalshi API.
+        Fetch NFL markets from Kalshi API with server-side pagination.
         
         Args:
-            limit: Number of markets to fetch
+            limit: Number of markets to fetch from API
             cursor: Pagination cursor for next page
             
         Returns:
-            Dictionary containing markets and cursor
+            Dictionary containing NFL markets and cursor for next page
         """
-        params = {
-            "limit": limit,
-            "series_ticker": "NFL",
-            "status": "open"
-        }
-        
-        if cursor:
-            params["cursor"] = cursor
-        
         try:
+            params = {
+                "limit": limit
+            }
+            
+            if cursor:
+                params["cursor"] = cursor
+            
             response = self.session.get(
                 f"{self.BASE_URL}/markets",
                 params=params,
                 timeout=10
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            
+            all_markets = data.get("markets", [])
+            nfl_markets = [
+                m for m in all_markets 
+                if "NFL" in m.get("event_ticker", "").upper() or 
+                   "NFL" in m.get("ticker", "").upper()
+            ]
+            
+            return {
+                "markets": nfl_markets,
+                "cursor": data.get("cursor")
+            }
         except requests.exceptions.RequestException as e:
             print(f"Error fetching NFL markets: {e}")
             return {"markets": [], "cursor": None}
@@ -123,25 +133,19 @@ class KalshiService:
         Returns:
             List of matching markets
         """
-        params = {
-            "limit": limit,
-            "series_ticker": "NFL",
-            "status": "open",
-            "event_ticker": query
-        }
+        data = self.get_nfl_markets(limit=limit)
+        markets = data.get("markets", [])
         
-        try:
-            response = self.session.get(
-                f"{self.BASE_URL}/markets",
-                params=params,
-                timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("markets", [])
-        except requests.exceptions.RequestException as e:
-            print(f"Error searching markets: {e}")
-            return []
+        if not query:
+            return markets
+        
+        query_lower = query.lower()
+        return [
+            m for m in markets
+            if query_lower in m.get("title", "").lower() or
+               query_lower in m.get("event_ticker", "").lower() or
+               query_lower in m.get("subtitle", "").lower()
+        ]
     
     def group_markets_by_event(self, markets: List[Dict]) -> Dict[str, List[Dict]]:
         """
