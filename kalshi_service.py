@@ -42,18 +42,19 @@ class KalshiService:
     
     def get_nfl_markets(self, limit: int = 100, cursor: Optional[str] = None) -> Dict:
         """
-        Fetch NFL markets from Kalshi API with server-side pagination.
+        Fetch Professional Football Game markets from Kalshi API.
         
         Args:
             limit: Number of markets to fetch from API
             cursor: Pagination cursor for next page
             
         Returns:
-            Dictionary containing NFL markets and cursor for next page
+            Dictionary containing game markets and cursor for next page
         """
         try:
             params = {
-                "limit": limit
+                "limit": limit,
+                "series_ticker": "KXNFLGAME"  # Professional Football Game series
             }
             
             if cursor:
@@ -67,22 +68,10 @@ class KalshiService:
             response.raise_for_status()
             data = response.json()
             
-            all_markets = data.get("markets", [])
-            
-            # Filter for NFL game outcome markets only
-            # Game markets are now wrapped in MVE markets with a single leg
-            nfl_game_markets = []
-            for m in all_markets:
-                legs = m.get("mve_selected_legs", [])
-                # Include markets with exactly 1 leg that is a game outcome
-                if len(legs) == 1:
-                    leg = legs[0]
-                    leg_event = leg.get("event_ticker", "")
-                    if "KXNFLGAME" in leg_event.upper():
-                        nfl_game_markets.append(m)
+            markets = data.get("markets", [])
             
             return {
-                "markets": nfl_game_markets,
+                "markets": markets,
                 "cursor": data.get("cursor")
             }
         except requests.exceptions.RequestException as e:
