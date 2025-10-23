@@ -4,9 +4,16 @@ This is an NFL prediction markets explorer built with Streamlit that integrates 
 
 # Recent Changes (October 23, 2025)
 
-## Latest Update: Game Contracts Only
+## Latest Update: Combined Market Pairs
+- **Markets now combine paired contracts** - Each game shows as a single row with both teams
+- Display format: Shows both teams with their probabilities (e.g., "SEA: 45% | WAS: 55%")
+- **Reduced market count by half** - ~13 games instead of ~25 individual contracts
+- Detail page allows selecting which team's contract to view via radio buttons
+- Session state properly manages navigation between combined markets
+
+## Game Contracts Only
 - **Switched to Professional Football Game series filtering** using `series_ticker=KXNFLGAME`
-- App now displays **only standalone game outcome contracts** (one contract per row)
+- App now displays **only standalone game outcome contracts**
 - Each market represents one team winning a specific game (e.g., "Seattle at Washington Winner?")
 - **Removed multivariate/parlay markets** from the display
 - Clean, simple market names without comma-separated conditions
@@ -28,10 +35,11 @@ Preferred communication style: Simple, everyday language.
 
 ## Frontend Architecture
 The application uses **Streamlit** as the web framework, providing a Python-based UI with built-in state management and reactive components. The interface follows a multi-page pattern with:
-- A market listing page with hierarchical grouping (Category → Matchup → Markets)
+- A market listing page with hierarchical grouping (Category → Matchup → Combined Markets)
+- Each row shows both teams with their probabilities in one combined view
 - Search and pagination functionality
-- Detail view for individual markets with AI-generated insights
-- Session state management for navigation and caching
+- Detail view with team selection radio buttons to view either team's contract
+- Session state management for navigation between combined/single markets
 
 **Pros**: Fast development, Python-native, built-in caching
 **Cons**: Limited customization compared to React/Vue, server-side rendering only
@@ -64,13 +72,23 @@ The `KalshiService` class includes a comprehensive normalization pipeline that t
 - Probability: uses yes_bid/100 (cents to decimal), fallback chain: yes_bid → last_price → mid_price
 - Volume: prefers `volume` field, fallback to `volume_24h`, then `liquidity`
 
-**Output Fields Added to Each Market**:
-- `category`: High-level category name (e.g., "Games", "Passing Yards")
-- `matchup`: Team matchup (e.g., "Minnesota Vikings @ Los Angeles Chargers") or "General"
-- `display_name`: Intuitive market name with expanded team names
-- `display_probability`: Decimal probability (0-1)
-- `display_probability_pct`: Formatted percentage string
-- `display_volume`: Correct volume field value
+**Market Pairing & Combination**:
+- Groups markets by `event_ticker` to identify opposing contracts
+- Combines paired markets using `combine_market_pair()` method
+- Stores both team contracts as `away_contract` and `home_contract`
+- Calculates probabilities for both teams with fallback chain
+- Uses maximum volume from both contracts
+
+**Output Fields Added to Combined Markets**:
+- `category`: High-level category name (e.g., "Games")
+- `matchup`: Team matchup (e.g., "Minnesota Vikings @ Los Angeles Chargers")
+- `display_name`: Game title from API
+- `away_team`, `home_team`: Full team names
+- `away_ticker`, `home_ticker`: Individual contract tickers
+- `away_probability`, `home_probability`: Win probabilities for each team
+- `away_probability_pct`, `home_probability_pct`: Formatted percentage strings
+- `display_volume`: Combined volume
+- `away_contract`, `home_contract`: Full contract data for both teams
 - `market_type_code`: Raw market type for reference
 
 ## Pagination Implementation
@@ -135,13 +153,15 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 
 ## Data Flow
 1. User searches/browses markets → Kalshi API call with `series_ticker=KXNFLGAME` and cursor-based pagination
-2. Game outcome markets returned from API (no filtering needed)
-3. Markets normalized through `KalshiService.normalize_market()`
-4. Markets grouped into nested structure: {category: {matchup: [markets]}}
-5. Displayed with Category → Matchup → Markets hierarchy
-6. User selects market → Detail page loads with additional API calls
-7. OpenAI generates analysis for selected market
-8. Results displayed with Plotly visualizations
+2. Game outcome markets returned from API (paired contracts for each game)
+3. Markets grouped by `event_ticker` to identify pairs
+4. Paired markets combined through `KalshiService.combine_market_pair()`
+5. Combined markets grouped into nested structure: {category: {matchup: [combined_markets]}}
+6. Displayed with Category → Matchup → Combined Markets hierarchy (one row per game)
+7. User selects game → Detail page shows both teams with radio button selector
+8. User selects team → Contract data loaded for chosen team
+9. OpenAI generates analysis for selected contract
+10. Results displayed with Plotly visualizations
 
 **Note**: The application currently operates in read-only mode without user authentication. Future enhancements may include authenticated trading capabilities.
 
@@ -151,4 +171,5 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 - OpenAI API quota limitations may prevent AI brief generation (displays error message)
 - Markets with no active bids show 0% probability and $0 volume (expected behavior, not a bug)
 - App displays **only game outcome contracts** - no player props, parlays, or other market types
-- Each game has 2 markets in the API (one for each team outcome)
+- **Each game displays as one combined row** - API returns 2 contracts per game (one per team) which are merged in the UI
+- Probabilities may not sum exactly to 100% due to bid-ask spreads and market inefficiencies
