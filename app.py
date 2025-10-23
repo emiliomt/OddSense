@@ -63,7 +63,7 @@ def show_market_list():
     current_cursor = st.session_state.page_cursors[st.session_state.current_page]
     
     with st.spinner("Loading NFL markets..."):
-        data = kalshi.get_nfl_markets(limit=markets_per_page, cursor=current_cursor)
+        data = kalshi.get_normalized_markets(limit=markets_per_page, cursor=current_cursor)
         markets = data.get("markets", [])
         next_cursor = data.get("cursor")
         
@@ -71,9 +71,9 @@ def show_market_list():
             search_lower = st.session_state.search_query.lower()
             markets = [
                 m for m in markets
-                if search_lower in m.get("title", "").lower()
-                or search_lower in m.get("subtitle", "").lower()
-                or search_lower in m.get("event_ticker", "").lower()
+                if search_lower in m.get("display_name", "").lower()
+                or search_lower in m.get("matchup", "").lower()
+                or search_lower in m.get("category", "").lower()
             ]
         
         st.session_state.current_markets = markets
@@ -86,43 +86,55 @@ def show_market_list():
             st.info("No NFL markets found on this page.")
             if not st.session_state.has_more and st.session_state.current_page == 0:
                 st.warning("No NFL markets available. Please try again later.")
+            return
         
-        grouped_markets = kalshi.group_markets_by_event(markets)
-        
-        if markets:
-            st.markdown(f"### Showing {len(markets)} markets across {len(grouped_markets)} events (Page {st.session_state.current_page + 1})")
-        
-        current_event = None
+        nested_markets = {}
         for market in markets:
-            event_ticker = market.get("event_ticker", "Unknown")
+            category = market.get("category", "Other Markets")
+            matchup = market.get("matchup", "General")
             
-            if current_event != event_ticker:
-                current_event = event_ticker
-                st.markdown(f"## 🏟️ {event_ticker}")
+            if category not in nested_markets:
+                nested_markets[category] = {}
+            if matchup not in nested_markets[category]:
+                nested_markets[category][matchup] = []
+            
+            nested_markets[category][matchup].append(market)
+        
+        total_categories = len(nested_markets)
+        st.markdown(f"### Showing {len(markets)} markets across {total_categories} categories (Page {st.session_state.current_page + 1})")
+        
+        for category in sorted(nested_markets.keys()):
+            st.markdown(f"## 🏈 {category}")
+            
+            matchups = nested_markets[category]
+            for matchup in sorted(matchups.keys()):
+                market_list = matchups[matchup]
+                
+                if matchup != "General":
+                    st.markdown(f"### 🏟️ {matchup}")
+                
+                for market in market_list:
+                    col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+                    
+                    with col1:
+                        display_name = market.get("display_name", "Unknown Market")
+                        st.markdown(f"**{display_name}**")
+                    
+                    with col2:
+                        prob_pct = market.get("display_probability_pct", "0%")
+                        st.metric("Probability", prob_pct)
+                    
+                    with col3:
+                        volume = market.get("display_volume", 0)
+                        st.metric("Volume", f"${volume:,.0f}")
+                    
+                    with col4:
+                        if st.button("📊 Details", key=f"btn_{market['ticker']}"):
+                            st.session_state.selected_ticker = market['ticker']
+                            st.session_state.page = 'detail'
+                            st.rerun()
+                
                 st.markdown("---")
-            
-            col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
-            
-            with col1:
-                title = market.get("title", "Unknown Market")
-                subtitle = market.get("subtitle", "")
-                st.markdown(f"**{title}**")
-                if subtitle:
-                    st.caption(subtitle)
-            
-            with col2:
-                yes_bid = market.get("yes_bid", 0)
-                st.metric("Probability", f"{yes_bid}%")
-            
-            with col3:
-                volume = market.get("volume", 0)
-                st.metric("Volume", f"${volume:,.0f}")
-            
-            with col4:
-                if st.button("📊 Details", key=f"btn_{market['ticker']}"):
-                    st.session_state.selected_ticker = market['ticker']
-                    st.session_state.page = 'detail'
-                    st.rerun()
         
         st.markdown("---")
         
@@ -167,22 +179,26 @@ def show_market_detail():
         st.error("Unable to load market details. Please try again.")
         return
     
-    st.header(market.get("title", "Unknown Market"))
-    if market.get("subtitle"):
-        st.subheader(market.get("subtitle"))
+    normalized_market = kalshi.normalize_market(market)
+    
+    st.header(normalized_market.get("display_name", "Unknown Market"))
+    category = normalized_market.get("category", "")
+    matchup = normalized_market.get("matchup", "")
+    if category or matchup:
+        st.subheader(f"{category} - {matchup}" if matchup != "General" else category)
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         yes_bid = market.get("yes_bid", 0)
-        st.metric("Yes Probability", f"{yes_bid}%", help="Current yes bid price")
+        st.metric("Yes Probability", f"{yes_bid}%", help="Current yes bid price in cents")
     
     with col2:
         no_bid = market.get("no_bid", 0)
-        st.metric("No Probability", f"{no_bid}%", help="Current no bid price")
+        st.metric("No Probability", f"{no_bid}%", help="Current no bid price in cents")
     
     with col3:
-        volume = market.get("volume", 0)
+        volume = normalized_market.get("display_volume", 0)
         st.metric("Volume", f"${volume:,.0f}", help="Total trading volume")
     
     with col4:
