@@ -344,19 +344,107 @@ class KalshiService:
         
         return normalized
     
+    def combine_market_pair(self, markets: List[Dict]) -> Optional[Dict]:
+        """
+        Combine two opposing markets (same game, different teams) into one combined market.
+        
+        Args:
+            markets: List of 2 markets representing opposite sides of the same game
+            
+        Returns:
+            Combined market dictionary with both team contracts, or None if can't combine
+        """
+        if len(markets) != 2:
+            return None
+        
+        m1, m2 = markets
+        ticker1 = m1.get("ticker", "")
+        ticker2 = m2.get("ticker", "")
+        
+        team1_code = ticker1.split('-')[-1] if '-' in ticker1 else ""
+        team2_code = ticker2.split('-')[-1] if '-' in ticker2 else ""
+        
+        if not team1_code or not team2_code:
+            return None
+        
+        team1_name = self.get_team_name(team1_code)
+        team2_name = self.get_team_name(team2_code)
+        
+        event_ticker = m1.get("event_ticker", "")
+        market_type, date, away_code, home_code = self.parse_event_ticker(event_ticker)
+        
+        away_market = m1 if team1_code == away_code else m2
+        home_market = m2 if team1_code == away_code else m1
+        away_name = self.get_team_name(away_code) if away_code else team1_name
+        home_name = self.get_team_name(home_code) if home_code else team2_name
+        
+        away_prob = self._get_probability(away_market)
+        home_prob = self._get_probability(home_market)
+        
+        combined_volume = max(
+            away_market.get("volume", 0),
+            home_market.get("volume", 0)
+        )
+        if combined_volume == 0:
+            combined_volume = max(
+                away_market.get("volume_24h", 0),
+                home_market.get("volume_24h", 0)
+            )
+        
+        combined = {
+            "event_ticker": event_ticker,
+            "category": self.get_category_name(market_type),
+            "matchup": f"{away_name} @ {home_name}",
+            "display_name": m1.get("title", ""),
+            "away_team": away_name,
+            "away_team_code": away_code,
+            "away_ticker": away_market.get("ticker", ""),
+            "away_probability": away_prob,
+            "away_probability_pct": f"{away_prob * 100:.0f}%",
+            "home_team": home_name,
+            "home_team_code": home_code,
+            "home_ticker": home_market.get("ticker", ""),
+            "home_probability": home_prob,
+            "home_probability_pct": f"{home_prob * 100:.0f}%",
+            "display_volume": combined_volume,
+            "market_type_code": market_type,
+            "away_contract": away_market,
+            "home_contract": home_market
+        }
+        
+        return combined
+    
+    def _get_probability(self, market: Dict) -> float:
+        """Helper to get probability from market with fallback chain."""
+        yes_bid = market.get("yes_bid", 0)
+        last_price = market.get("last_price", 0)
+        mid_price = market.get("mid_price", 0)
+        
+        price = yes_bid if yes_bid > 0 else (last_price if last_price > 0 else mid_price)
+        return price / 100.0
+    
     def get_normalized_markets(self, limit: int = 100, cursor: Optional[str] = None) -> Dict:
         """
-        Fetch and normalize NFL markets with display-ready fields.
+        Fetch and normalize NFL markets, combining paired markets into single rows.
         
         Returns:
-            Dictionary with normalized markets and cursor
+            Dictionary with combined markets and cursor
         """
         data = self.get_nfl_markets(limit=limit, cursor=cursor)
         markets = data.get("markets", [])
         
-        normalized_markets = [self.normalize_market(m) for m in markets]
+        grouped = self.group_markets_by_event(markets)
+        
+        combined_markets = []
+        for event_ticker, event_markets in grouped.items():
+            combined = self.combine_market_pair(event_markets)
+            if combined:
+                combined_markets.append(combined)
+            else:
+                for m in event_markets:
+                    combined_markets.append(self.normalize_market(m))
         
         return {
-            "markets": normalized_markets,
+            "markets": combined_markets,
             "cursor": data.get("cursor")
         }

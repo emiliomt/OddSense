@@ -25,6 +25,10 @@ def init_session_state():
         st.session_state.page = 'list'
     if 'selected_ticker' not in st.session_state:
         st.session_state.selected_ticker = None
+    if 'selected_event' not in st.session_state:
+        st.session_state.selected_event = None
+    if 'selected_market' not in st.session_state:
+        st.session_state.selected_market = None
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 0
     if 'search_query' not in st.session_state:
@@ -114,25 +118,55 @@ def show_market_list():
                     st.markdown(f"### 🏟️ {matchup}")
                 
                 for market in market_list:
-                    col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
-                    
-                    with col1:
-                        display_name = market.get("display_name", "Unknown Market")
-                        st.markdown(f"**{display_name}**")
-                    
-                    with col2:
-                        prob_pct = market.get("display_probability_pct", "0%")
-                        st.metric("Probability", prob_pct)
-                    
-                    with col3:
-                        volume = market.get("display_volume", 0)
-                        st.metric("Volume", f"${volume:,.0f}")
-                    
-                    with col4:
-                        if st.button("📊 Details", key=f"btn_{market['ticker']}"):
-                            st.session_state.selected_ticker = market['ticker']
-                            st.session_state.page = 'detail'
-                            st.rerun()
+                    if "away_team" in market and "home_team" in market:
+                        col1, col2, col3, col4 = st.columns([4, 2, 1, 1])
+                        
+                        with col1:
+                            display_name = market.get("display_name", "Unknown Market")
+                            st.markdown(f"**{display_name}**")
+                        
+                        with col2:
+                            away_team = market.get("away_team", "")
+                            home_team = market.get("home_team", "")
+                            away_prob = market.get("away_probability_pct", "0%")
+                            home_prob = market.get("home_probability_pct", "0%")
+                            st.markdown(f"**{away_team[:3].upper()}:** {away_prob} | **{home_team[:3].upper()}:** {home_prob}")
+                        
+                        with col3:
+                            volume = market.get("display_volume", 0)
+                            st.metric("Volume", f"${volume:,.0f}")
+                        
+                        with col4:
+                            event_ticker = market.get("event_ticker", "")
+                            if st.button("📊 Details", key=f"btn_{event_ticker}"):
+                                st.session_state.selected_ticker = None
+                                st.session_state.selected_event = event_ticker
+                                st.session_state.selected_market = market
+                                st.session_state.page = 'detail'
+                                st.rerun()
+                    else:
+                        col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+                        
+                        with col1:
+                            display_name = market.get("display_name", "Unknown Market")
+                            st.markdown(f"**{display_name}**")
+                        
+                        with col2:
+                            prob_pct = market.get("display_probability_pct", "0%")
+                            st.metric("Probability", prob_pct)
+                        
+                        with col3:
+                            volume = market.get("display_volume", 0)
+                            st.metric("Volume", f"${volume:,.0f}")
+                        
+                        with col4:
+                            ticker = market.get("ticker", "")
+                            if st.button("📊 Details", key=f"btn_{ticker}"):
+                                st.session_state.selected_market = None
+                                st.session_state.selected_event = None
+                                st.session_state.selected_ticker = ticker
+                                st.session_state.page = 'detail'
+                                st.rerun()
                 
                 st.markdown("---")
         
@@ -163,11 +197,61 @@ def show_market_detail():
     kalshi = get_kalshi_service()
     openai_service = get_openai_service()
     
-    ticker = st.session_state.selected_ticker
-    
     if st.button("⬅️ Back to Markets"):
         st.session_state.page = 'list'
+        st.session_state.selected_market = None
+        st.session_state.selected_event = None
+        st.session_state.selected_ticker = None
         st.rerun()
+    
+    if 'selected_market' in st.session_state and st.session_state.selected_market and 'selected_event' in st.session_state and st.session_state.selected_event:
+        combined_market = st.session_state.selected_market
+        
+        if combined_market.get("event_ticker") == st.session_state.selected_event and "away_team" in combined_market and "home_team" in combined_market:
+            st.title(f"📊 {combined_market.get('display_name', 'Game Market')}")
+            st.subheader(f"{combined_market.get('matchup', '')}")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"### {combined_market.get('away_team', 'Away Team')}")
+                st.metric("Win Probability", combined_market.get("away_probability_pct", "0%"))
+            
+            with col2:
+                st.markdown(f"### {combined_market.get('home_team', 'Home Team')}")
+                st.metric("Win Probability", combined_market.get("home_probability_pct", "0%"))
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                st.metric("Volume", f"${combined_market.get('display_volume', 0):,.0f}")
+            with col4:
+                away_contract = combined_market.get("away_contract", {})
+                home_contract = combined_market.get("home_contract", {})
+                total_oi = away_contract.get("open_interest", 0) + home_contract.get("open_interest", 0)
+                st.metric("Open Interest", f"{total_oi:,}")
+            
+            st.markdown("---")
+            
+            team_choice = st.radio(
+                "Select team to view details:",
+                [combined_market.get('away_team', 'Away'), combined_market.get('home_team', 'Home')],
+                horizontal=True
+            )
+            
+            if team_choice == combined_market.get('away_team'):
+                selected_contract = combined_market.get("away_contract", {})
+                ticker = combined_market.get("away_ticker", "")
+            else:
+                selected_contract = combined_market.get("home_contract", {})
+                ticker = combined_market.get("home_ticker", "")
+            
+            show_contract_details(kalshi, openai_service, ticker, selected_contract, combined_market)
+            return
+    
+    ticker = st.session_state.get('selected_ticker')
+    if not ticker:
+        st.error("No market selected")
+        return
     
     st.title(f"📊 Market Details: {ticker}")
     
@@ -205,6 +289,14 @@ def show_market_detail():
         open_interest = market.get("open_interest", 0)
         st.metric("Open Interest", f"{open_interest:,}", help="Outstanding contracts")
     
+    show_contract_tabs(kalshi, openai_service, ticker, market)
+
+def show_contract_details(kalshi, openai_service, ticker, contract, combined_market):
+    """Show tabs for contract details."""
+    show_contract_tabs(kalshi, openai_service, ticker, contract)
+
+def show_contract_tabs(kalshi, openai_service, ticker, market):
+    """Display tabs with contract details."""
     st.markdown("---")
     
     tab1, tab2, tab3, tab4 = st.tabs(["📈 Price History", "📖 Order Book", "🤖 AI Market Brief", "ℹ️ Market Info"])
