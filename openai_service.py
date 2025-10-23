@@ -72,7 +72,8 @@ Keep it concise, informative, and focused on actionable insights for traders."""
                 max_completion_tokens=500
             )
             
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            return content if content else "Unable to generate market brief: No content returned"
         
         except Exception as e:
             return f"Unable to generate market brief: {str(e)}"
@@ -105,7 +106,8 @@ Provide ONE concise sentence highlighting what's interesting about this market."
                 max_completion_tokens=100
             )
             
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            return content if content else f"Market trading at {probability*100:.1f}% probability with ${volume} volume"
         
         except Exception as e:
             return f"Market trading at {probability*100:.1f}% probability with ${volume} volume"

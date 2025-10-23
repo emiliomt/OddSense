@@ -25,6 +25,15 @@ The application follows a **service-oriented architecture** with separation of c
 
 This modular approach allows for easy testing, maintenance, and potential reuse of services. No traditional backend server is required since Streamlit handles the HTTP layer.
 
+## Pagination Implementation
+The app implements **true server-side cursor-based pagination**:
+- Fetches fresh data from Kalshi API for each page navigation
+- Stores cursors in session state (`page_cursors` list)
+- Filters for NFL markets client-side (~98.5% of markets are NFL)
+- Returns all filtered results without truncation to avoid losing markets
+- Pages may vary slightly in size (95-100 markets) due to client-side NFL filtering
+- Next/Previous buttons trigger new API calls with appropriate cursors
+
 ## Data Visualization
 **Plotly** is used for interactive charts and graphs (imported in `app.py`). This was chosen over simpler charting libraries to provide rich, interactive visualizations of market data including price movements, volume, and probability distributions.
 
@@ -48,13 +57,18 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 - **Purpose**: Fetches NFL prediction market data including prices, volume, and open interest
 - **Key Methods**: 
   - `GET /markets` with pagination cursor support
-  - Filtering for NFL-specific markets by ticker
+  - Filtering for NFL-specific markets client-side (event_ticker contains "NFL")
+  - `GET /markets/{ticker}` for detailed market information
+  - `GET /markets/{ticker}/history` for price history
+  - `GET /markets/{ticker}/orderbook` for current order book
+- **Note**: API does not support server-side NFL filtering via parameters, so client-side filtering is applied
 
 ### OpenAI API
 - **Model**: GPT-5 (current as of August 2025)
 - **Authentication**: API key via `OPENAI_API_KEY` environment variable
 - **Purpose**: Generates natural language market analysis and insights
 - **Integration**: Python OpenAI client library
+- **Configuration**: No temperature parameter (GPT-5 limitation), uses max_completion_tokens instead of max_tokens
 
 ## Python Libraries
 - **streamlit**: Web application framework and UI components
@@ -69,9 +83,17 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 - Session state managed in-memory by Streamlit
 
 ## Data Flow
-1. User searches/browses markets → Kalshi API call
-2. Market data cached in Streamlit session state
-3. User selects market → OpenAI generates analysis
-4. Results displayed with Plotly visualizations
+1. User searches/browses markets → Kalshi API call with cursor-based pagination
+2. Market data filtered for NFL markets client-side
+3. Markets grouped by event and displayed with pagination
+4. User selects market → Detail page loads with additional API calls
+5. OpenAI generates analysis for selected market
+6. Results displayed with Plotly visualizations
 
 **Note**: The application currently operates in read-only mode without user authentication. Future enhancements may include authenticated trading capabilities.
+
+# Known Limitations
+- Client-side search only filters current page results (not across all pages)
+- Page sizes may vary slightly (95-100 markets) due to NFL filtering after fetching
+- Some markets may lack historical price data (handled gracefully with info messages)
+- OpenAI API quota limitations may prevent AI brief generation (displays error message)
