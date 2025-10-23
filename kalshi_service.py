@@ -68,14 +68,21 @@ class KalshiService:
             data = response.json()
             
             all_markets = data.get("markets", [])
-            nfl_markets = [
-                m for m in all_markets 
-                if "NFL" in m.get("event_ticker", "").upper() or 
-                   "NFL" in m.get("ticker", "").upper()
-            ]
+            
+            # Filter for NFL game outcome markets only
+            # Game markets are now wrapped in MVE markets with a single leg
+            nfl_game_markets = []
+            for m in all_markets:
+                legs = m.get("mve_selected_legs", [])
+                # Include markets with exactly 1 leg that is a game outcome
+                if len(legs) == 1:
+                    leg = legs[0]
+                    leg_event = leg.get("event_ticker", "")
+                    if "KXNFLGAME" in leg_event.upper():
+                        nfl_game_markets.append(m)
             
             return {
-                "markets": nfl_markets,
+                "markets": nfl_game_markets,
                 "cursor": data.get("cursor")
             }
         except requests.exceptions.RequestException as e:
