@@ -4,7 +4,14 @@ This is an NFL prediction markets explorer built with Streamlit that integrates 
 
 # Recent Changes (October 23, 2025)
 
-## Latest Update: Combined Market Pairs
+## Latest Update: Fixed AI Market Brief Generation
+- **Resolved empty content issue** - AI briefs now generate successfully
+- **Root cause**: GPT-5 reasoning tokens consumed entire 500-token budget, leaving zero for output
+- **Solution**: Increased `max_completion_tokens` to 5000 and added `reasoning_effort="low"`
+- **Added debug logging** - Tracks finish_reason, refusal, and usage stats for troubleshooting
+- **Enhanced error handling** - Specific messages for refusals, token limits, and empty responses
+
+## Combined Market Pairs
 - **Markets now combine paired contracts** - Each game shows as a single row with both teams
 - Display format: Shows both teams with their probabilities (e.g., "SEA: 45% | WAS: 55%")
 - **Reduced market count by half** - ~13 games instead of ~25 individual contracts
@@ -109,6 +116,9 @@ The application uses **OpenAI's GPT-5** (latest model as of August 2025) to gene
 - Constructs detailed prompts with market data
 - Formats probability implications from bid prices
 - Generates concise 3-4 sentence analyses
+- **GPT-5 Configuration**: Uses `max_completion_tokens=5000` to account for reasoning tokens (GPT-5 is a reasoning model that consumes tokens for internal reasoning before generating output)
+- **Reasoning effort**: Set to "low" for simple analysis tasks to reduce token overhead
+- **Debug logging**: Tracks API responses (finish_reason, refusal, content, usage) for troubleshooting
 
 The AI brief covers market sentiment, probability analysis, and contextual insights to help users make informed decisions.
 
@@ -133,11 +143,16 @@ The AI brief covers market sentiment, probability analysis, and contextual insig
 - **Filtering**: Uses `series_ticker=KXNFLGAME` to fetch only Professional Football Game markets server-side
 
 ### OpenAI API
-- **Model**: GPT-5 (current as of August 2025)
+- **Model**: GPT-5 (reasoning model released August 2025)
 - **Authentication**: API key via `OPENAI_API_KEY` environment variable
 - **Purpose**: Generates natural language market analysis and insights
 - **Integration**: Python OpenAI client library
-- **Configuration**: No temperature parameter (GPT-5 limitation), uses max_completion_tokens instead of max_tokens
+- **Configuration**: 
+  - Uses `max_completion_tokens=5000` (accounts for reasoning tokens + output)
+  - `reasoning_effort="low"` for simple analysis tasks
+  - No temperature parameter (not supported by GPT-5)
+  - Debug logging enabled to track finish_reason, refusal, and token usage
+- **Note**: GPT-5 uses hidden reasoning tokens that count toward completion token budget
 
 ## Python Libraries
 - **streamlit**: Web application framework and UI components
