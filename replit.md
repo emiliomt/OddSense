@@ -4,15 +4,21 @@ This is an NFL prediction markets explorer built with Streamlit that integrates 
 
 # Recent Changes (November 5, 2025)
 
-## Latest Update: Enhanced Event Context and Historical Data
+## Latest Update: Connected Kalshi API for Historical Charts
+- **Fixed Historical Price Charts** - Now successfully fetching and displaying 7 days of hourly price data from Kalshi API
+- **API Integration Corrected** - Added required `start_ts` and `end_ts` parameters to candlesticks endpoint
+- **Updated Response Parsing** - Correctly handles new Kalshi API structure with nested `price` objects
+- **None Value Filtering** - Prevents crashes by filtering out candlesticks with missing data
+- **Interactive Plotly Charts** - Shows price movement over time with trend indicators (📈 Rising, 📉 Falling, ➡️ Stable)
+- **Debug Logging** - Added comprehensive logging for API requests and responses to aid troubleshooting
+
+## Enhanced Event Context and Historical Data
 - **Market Overview Dashboard** - Added metric cards with explanations for 24h volume, open interest, and time remaining
-- **Historical Price Charts** - Hourly price movement visualization with trend indicators (📈 Rising, 📉 Falling, ➡️ Stable)
 - **Volume History** - Collapsible chart showing trading volume spikes over time
 - **Order Book Display** - Real-time pending YES and NO orders with explanatory context
 - **Market Mechanics Guide** - Info boxes explaining bid/ask pricing, implied probability, and trading concepts
 - **Human-Readable Time Display** - Shows "Market closes in X days/hours" instead of raw timestamps
 - **Comprehensive Descriptions** - All metrics include help tooltips and plain-language explanations
-- **New API Methods** - Added `get_market_candlesticks()` and `get_market_orderbook()` to KalshiService
 - **Graceful Degradation** - Missing historical data shows helpful info messages instead of errors
 
 ## Fixed AI Market Brief Generation
