@@ -283,12 +283,19 @@ def page_detail():
         )
         
         if candlesticks and len(candlesticks) > 0:
-            timestamps = [c["timestamp"] for c in candlesticks]
-            closes = [c["close"] for c in candlesticks]
-            volumes = [c.get("volume", 0) for c in candlesticks]
+            # Filter out candlesticks with None close prices
+            valid_candles = [c for c in candlesticks if c.get("close") is not None]
+            
+            if valid_candles:
+                timestamps = [c["timestamp"] for c in valid_candles]
+                closes = [c["close"] for c in valid_candles]
+                volumes = [c.get("volume", 0) for c in valid_candles]
+            else:
+                # No valid data
+                timestamps, closes, volumes = [], [], []
             
             # Calculate trend
-            if len(closes) >= 2:
+            if len(closes) >= 2 and closes[0] is not None and closes[-1] is not None:
                 price_change = closes[-1] - closes[0]
                 pct_change = (price_change / closes[0] * 100) if closes[0] > 0 else 0
                 
@@ -300,50 +307,53 @@ def page_detail():
                 
                 st.caption(trend_text)
             
-            # Create price chart
-            fig = go.Figure()
-            
-            fig.add_trace(go.Scatter(
-                x=timestamps,
-                y=closes,
-                mode='lines',
-                name='Close Price',
-                line=dict(color='#1f77b4', width=2),
-                hovertemplate='<b>Time:</b> %{x}<br><b>Price:</b> $%{y:.2f}<extra></extra>'
-            ))
-            
-            fig.update_layout(
-                title="Price Over Time (Hourly)",
-                xaxis_title="Time",
-                yaxis_title="Price (Probability)",
-                yaxis=dict(tickformat='.0%', range=[0, 1]),
-                hovermode='x unified',
-                height=400
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Volume chart
-            if max(volumes) > 0:
-                fig_vol = go.Figure()
-                fig_vol.add_trace(go.Bar(
+            # Create price chart only if we have valid data
+            if len(closes) > 0:
+                fig = go.Figure()
+                
+                fig.add_trace(go.Scatter(
                     x=timestamps,
-                    y=volumes,
-                    name='Volume',
-                    marker_color='lightblue',
-                    hovertemplate='<b>Time:</b> %{x}<br><b>Volume:</b> %{y}<extra></extra>'
+                    y=closes,
+                    mode='lines',
+                    name='Close Price',
+                    line=dict(color='#1f77b4', width=2),
+                    hovertemplate='<b>Time:</b> %{x}<br><b>Price:</b> $%{y:.2f}<extra></extra>'
                 ))
                 
-                fig_vol.update_layout(
-                    title="Trading Volume Over Time",
+                fig.update_layout(
+                    title="Price Over Time (Hourly)",
                     xaxis_title="Time",
-                    yaxis_title="Volume",
-                    height=300
+                    yaxis_title="Price (Probability)",
+                    yaxis=dict(tickformat='.0%', range=[0, 1]),
+                    hovermode='x unified',
+                    height=400
                 )
                 
-                with st.expander("📊 View Volume History"):
-                    st.caption("**Volume spikes** can indicate important news or events affecting trader sentiment.")
-                    st.plotly_chart(fig_vol, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Volume chart
+                if len(volumes) > 0 and max(volumes) > 0:
+                    fig_vol = go.Figure()
+                    fig_vol.add_trace(go.Bar(
+                        x=timestamps,
+                        y=volumes,
+                        name='Volume',
+                        marker_color='lightblue',
+                        hovertemplate='<b>Time:</b> %{x}<br><b>Volume:</b> %{y}<extra></extra>'
+                    ))
+                    
+                    fig_vol.update_layout(
+                        title="Trading Volume Over Time",
+                        xaxis_title="Time",
+                        yaxis_title="Volume",
+                        height=300
+                    )
+                    
+                    with st.expander("📊 View Volume History"):
+                        st.caption("**Volume spikes** can indicate important news or events affecting trader sentiment.")
+                        st.plotly_chart(fig_vol, use_container_width=True)
+            else:
+                st.info("Historical price data contains no valid close prices. This can happen for newly created markets.")
         else:
             st.info("Historical price data not yet available for this market. Check back after some trading activity.")
     

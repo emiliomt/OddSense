@@ -321,7 +321,8 @@ class KalshiService:
             self,
             series_ticker: str,
             ticker: str,
-            period_interval: int = 60) -> Optional[List[Dict]]:
+            period_interval: int = 60,
+            days_back: int = 7) -> Optional[List[Dict]]:
         """
         Fetch historical price data (OHLC candlesticks).
         
@@ -329,25 +330,48 @@ class KalshiService:
             series_ticker: Series ticker (e.g., 'KXNFLGAME')
             ticker: Market ticker
             period_interval: Time period in minutes (1, 60, or 1440)
+            days_back: How many days of history to fetch
         
         Returns:
-            List of candlestick dicts or None on error
+            List of candlestick dicts with simplified structure or None on error
         """
         try:
-            path = f"/series/{series_ticker}/markets/{ticker}/candlesticks"
-            params = {"period_interval": period_interval}
-            data = self._get(path, params=params)
-            candlesticks = data.get("candlesticks", [])
+            import time
             
-            # Convert cents to dollars
-            for candle in candlesticks:
-                candle["open"] = self._cents_to_dollars(candle.get("open"))
-                candle["high"] = self._cents_to_dollars(candle.get("high"))
-                candle["low"] = self._cents_to_dollars(candle.get("low"))
-                candle["close"] = self._cents_to_dollars(candle.get("close"))
+            # Calculate timestamps
+            end_ts = int(time.time())
+            start_ts = end_ts - (days_back * 24 * 60 * 60)
+            
+            path = f"/series/{series_ticker}/markets/{ticker}/candlesticks"
+            params = {
+                "period_interval": period_interval,
+                "start_ts": start_ts,
+                "end_ts": end_ts
+            }
+            print(f"[DEBUG] Fetching candlesticks: {self.BASE_URL}{path} with params {params}")
+            data = self._get(path, params=params)
+            candlesticks_raw = data.get("candlesticks", [])
+            print(f"[DEBUG] Got {len(candlesticks_raw)} candlesticks")
+            
+            # Transform to simplified structure
+            candlesticks = []
+            for candle in candlesticks_raw:
+                # Use the 'price' object which contains the market price
+                price_data = candle.get("price", {})
+                candlesticks.append({
+                    "timestamp": datetime.fromtimestamp(candle.get("end_period_ts", 0), tz=datetime.now().astimezone().tzinfo).isoformat(),
+                    "open": self._cents_to_dollars(price_data.get("open")),
+                    "high": self._cents_to_dollars(price_data.get("high")),
+                    "low": self._cents_to_dollars(price_data.get("low")),
+                    "close": self._cents_to_dollars(price_data.get("close")),
+                    "volume": candle.get("volume", 0),
+                })
             
             return candlesticks
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch candlesticks for {ticker}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def get_market_orderbook(self, ticker: str) -> Optional[Dict]:
@@ -362,6 +386,7 @@ class KalshiService:
         """
         try:
             path = f"/markets/{ticker}/orderbook"
+            print(f"[DEBUG] Fetching orderbook: {self.BASE_URL}{path}")
             data = self._get(path, params={})
             
             # Convert cents to dollars for all orders
@@ -372,6 +397,8 @@ class KalshiService:
                 for order in data["no"]:
                     order["price"] = self._cents_to_dollars(order.get("price"))
             
+            print(f"[DEBUG] Got orderbook with {len(data.get('yes', []))} YES orders and {len(data.get('no', []))} NO orders")
             return data
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch orderbook for {ticker}: {e}")
             return None
