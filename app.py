@@ -477,12 +477,95 @@ def page_detail():
             away_kalshi_prob = None
             home_kalshi_prob = None
             
+            # Find winner contracts - collect all first, then assign
+            winner_contracts = []
             for contract in ev.get('all_contracts', []):
-                title = contract.get('title', '').lower()
-                if away_team_name.lower() in title:
-                    away_kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
-                elif home_team_name.lower() in title:
-                    home_kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+                title = contract.get('title', '') or ''
+                # Only look at winner markets
+                if 'winner' not in title.lower():
+                    continue
+                winner_contracts.append(contract)
+            
+            # Strategy 1: Try matching by team codes in event ticker
+            event_ticker = ev.get('event_ticker', '')
+            if event_ticker:
+                # Extract team codes from ticker (e.g., KXNFLGAME-25NOV09ATLIND -> ATL, IND)
+                import re
+                codes = re.findall(r'[A-Z]{2,3}', event_ticker.upper())
+                # Last 2 codes are usually away, home
+                if len(codes) >= 2:
+                    away_code, home_code = codes[-2], codes[-1]
+                    
+                    # Match each winner contract to away or home
+                    # Typical pattern: KXNFLGAME-25NOV09-ATL-IND-B-{TEAM}-WIN
+                    # The team code appears near the end, after the event codes
+                    for contract in winner_contracts:
+                        ticker = (contract.get('ticker', '') or '').upper()
+                        # Fallback chain: yes_bid -> last_price (for thin markets)
+                        prob = contract.get('yes_bid') or contract.get('last_price')
+                        
+                        # Look for pattern like -ATL-WIN or -ATL- near the end
+                        # Split ticker into parts and check last few segments
+                        ticker_parts = ticker.split('-')
+                        
+                        # Check last 3 parts for team codes (before WIN suffix)
+                        relevant_parts = ticker_parts[-3:] if len(ticker_parts) >= 3 else ticker_parts
+                        
+                        # Count occurrences in relevant parts only
+                        away_in_end = away_code in relevant_parts
+                        home_in_end = home_code in relevant_parts
+                        
+                        if away_in_end and not home_in_end and away_kalshi_prob is None:
+                            away_kalshi_prob = prob
+                        elif home_in_end and not away_in_end and home_kalshi_prob is None:
+                            home_kalshi_prob = prob
+            
+            # Strategy 2: If still missing, try text matching
+            if away_kalshi_prob is None or home_kalshi_prob is None:
+                for contract in winner_contracts:
+                    if away_kalshi_prob is not None and home_kalshi_prob is not None:
+                        break
+                    
+                    title = contract.get('title', '') or ''
+                    subtitle = contract.get('subtitle', '') or ''
+                    full_text = f"{title} {subtitle}".lower()
+                    
+                    # Fallback chain: yes_bid -> last_price (for thin markets)
+                    prob = contract.get('yes_bid') or contract.get('last_price')
+                    
+                    # Match team name parts
+                    away_parts = [p for p in away_team_name.lower().split() if len(p) > 2]
+                    home_parts = [p for p in home_team_name.lower().split() if len(p) > 2]
+                    
+                    away_matches = sum(1 for part in away_parts if part in full_text)
+                    home_matches = sum(1 for part in home_parts if part in full_text)
+                    
+                    # Assign based on matches
+                    if away_matches > home_matches and away_kalshi_prob is None:
+                        away_kalshi_prob = prob
+                    elif home_matches > away_matches and home_kalshi_prob is None:
+                        home_kalshi_prob = prob
+                    elif away_matches == home_matches and away_matches > 0:
+                        # Tie - check for "Yes" in title to identify the team
+                        if '— yes' in full_text.lower() or 'yes' in subtitle.lower():
+                            # This is likely the primary team - assign to first missing
+                            if away_kalshi_prob is None:
+                                away_kalshi_prob = prob
+                            elif home_kalshi_prob is None:
+                                home_kalshi_prob = prob
+            
+            # Strategy 3: Use winner_primary as fallback
+            if away_kalshi_prob is None or home_kalshi_prob is None:
+                winner_primary = ev.get('winner_primary', {})
+                primary_team = winner_primary.get('subject_team', '')
+                primary_bid = winner_primary.get('yes_bid')
+                
+                if primary_bid is not None:
+                    # Determine if primary is away or home
+                    if primary_team == away_team_name and away_kalshi_prob is None:
+                        away_kalshi_prob = primary_bid
+                    elif primary_team == home_team_name and home_kalshi_prob is None:
+                        home_kalshi_prob = primary_bid
             
             # Derive complement if only one found
             if away_kalshi_prob is None and home_kalshi_prob is not None:
