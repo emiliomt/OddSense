@@ -1,450 +1,377 @@
-import requests
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+# kalshi_service.py
 import re
+from datetime import datetime
+from difflib import get_close_matches
+from typing import Dict, List, Optional, Tuple
+
+import requests
+
 
 class KalshiService:
-    """Service for interacting with the unauthenticated Kalshi API."""
-    
+    """
+    Unauthenticated access to Kalshi NFL markets.
+
+    Output per event:
+      - ONE primary Winner market row: `winner_primary`
+        • subject_team: which team the "YES" applies to (HOME preferred)
+        • yes_bid / yes_ask (for that team)
+        • no_bid / no_ask (for the opposite outcome; complements using the *other* team if available)
+        • ticker
+      - open_interest_sum / volume_24h_sum (event aggregates)
+      - all_contracts (raw normalized)
+    """
+
     BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
-    
-    MARKET_CATEGORY_MAP = {
-        "GAME": "Games",
-        "PASSYDS": "Passing Yards",
-        "RSHYDS": "Rushing Yards",
-        "RECYDS": "Receiving Yards",
-        "ANYTD": "Anytime Touchdowns",
-        "PASSTD": "Passing Touchdowns",
-        "RSHTD": "Rushing Touchdowns",
-        "RECTD": "Receiving Touchdowns",
-        "SB": "Super Bowl",
-        "MVPNFL": "NFL MVP",
-        "PLAYOFF": "Playoffs",
-        "MVE": "Same Game Parlays"
+    SERIES_TICKER_GAME = "KXNFLGAME"
+
+    TEAM_MAP: Dict[str, str] = {
+        "ARI": "Arizona Cardinals",
+        "ATL": "Atlanta Falcons",
+        "BAL": "Baltimore Ravens",
+        "BUF": "Buffalo Bills",
+        "CAR": "Carolina Panthers",
+        "CHI": "Chicago Bears",
+        "CIN": "Cincinnati Bengals",
+        "CLE": "Cleveland Browns",
+        "DAL": "Dallas Cowboys",
+        "DEN": "Denver Broncos",
+        "DET": "Detroit Lions",
+        "GB": "Green Bay Packers",
+        "HOU": "Houston Texans",
+        "IND": "Indianapolis Colts",
+        "JAX": "Jacksonville Jaguars",
+        "KC": "Kansas City Chiefs",
+        "LAC": "Los Angeles Chargers",
+        "LAR": "Los Angeles Rams",
+        "LV": "Las Vegas Raiders",
+        "MIA": "Miami Dolphins",
+        "MIN": "Minnesota Vikings",
+        "NE": "New England Patriots",
+        "NO": "New Orleans Saints",
+        "NYG": "New York Giants",
+        "NYJ": "New York Jets",
+        "PHI": "Philadelphia Eagles",
+        "PIT": "Pittsburgh Steelers",
+        "SEA": "Seattle Seahawks",
+        "SF": "San Francisco 49ers",
+        "TB": "Tampa Bay Buccaneers",
+        "TEN": "Tennessee Titans",
+        "WAS": "Washington Commanders",
     }
-    
-    TEAM_NAMES = {
-        "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens",
-        "BUF": "Buffalo Bills", "CAR": "Carolina Panthers", "CHI": "Chicago Bears",
-        "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns", "DAL": "Dallas Cowboys",
-        "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
-        "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars",
-        "KC": "Kansas City Chiefs", "LAC": "Los Angeles Chargers", "LAR": "Los Angeles Rams",
-        "LV": "Las Vegas Raiders", "MIA": "Miami Dolphins", "MIN": "Minnesota Vikings",
-        "NE": "New England Patriots", "NO": "New Orleans Saints", "NYG": "New York Giants",
-        "NYJ": "New York Jets", "PHI": "Philadelphia Eagles", "PIT": "Pittsburgh Steelers",
-        "SEA": "Seattle Seahawks", "SF": "San Francisco 49ers", "TB": "Tampa Bay Buccaneers",
-        "TEN": "Tennessee Titans", "WAS": "Washington Commanders"
-    }
-    
-    def __init__(self):
+    TEAM_ABBRS = set(TEAM_MAP.keys())
+    TEAM_NAMES = list(TEAM_MAP.values())
+
+    def __init__(self) -> None:
         self.session = requests.Session()
-    
-    def get_nfl_markets(self, limit: int = 100, cursor: Optional[str] = None) -> Dict:
-        """
-        Fetch Professional Football Game markets from Kalshi API.
-        
-        Args:
-            limit: Number of markets to fetch from API
-            cursor: Pagination cursor for next page
-            
-        Returns:
-            Dictionary containing game markets and cursor for next page
-        """
+        self.session.headers.update({"Accept": "application/json"})
+
+    # ---------------- HTTP ----------------
+
+    def _get(self, path: str, params: Optional[Dict] = None) -> Dict:
+        url = f"{self.BASE_URL}{path}"
+        r = self.session.get(url, params=params or {}, timeout=20)
+        r.raise_for_status()
+        return r.json()
+
+    # ---------------- Utilities ----------------
+
+    @staticmethod
+    def _cents_to_dollars(v: Optional[float]) -> Optional[float]:
         try:
-            params = {
-                "limit": limit,
-                "series_ticker": "KXNFLGAME"  # Professional Football Game series
-            }
-            
-            if cursor:
-                params["cursor"] = cursor
-            
-            response = self.session.get(
-                f"{self.BASE_URL}/markets",
-                params=params,
-                timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            markets = data.get("markets", [])
-            
-            return {
-                "markets": markets,
-                "cursor": data.get("cursor")
-            }
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching NFL markets: {e}")
-            return {"markets": [], "cursor": None}
-    
-    def get_market_details(self, ticker: str) -> Optional[Dict]:
-        """
-        Get detailed information for a specific market.
-        
-        Args:
-            ticker: Market ticker symbol
-            
-        Returns:
-            Market details dictionary or None
-        """
-        try:
-            response = self.session.get(
-                f"{self.BASE_URL}/markets/{ticker}",
-                timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("market")
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching market details for {ticker}: {e}")
+            return round(float(v) / 100.0, 2) if v is not None else None
+        except Exception:
             return None
-    
-    def get_market_history(self, ticker: str, limit: int = 100) -> List[Dict]:
-        """
-        Get historical trades for a market.
-        
-        Args:
-            ticker: Market ticker symbol
-            limit: Number of historical trades to fetch
-            
-        Returns:
-            List of historical trade data
-        """
-        try:
-            response = self.session.get(
-                f"{self.BASE_URL}/markets/{ticker}/history",
-                params={"limit": limit},
-                timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("history", [])
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching market history for {ticker}: {e}")
-            return []
-    
-    def get_orderbook(self, ticker: str, depth: int = 10) -> Optional[Dict]:
-        """
-        Get current orderbook for a market.
-        
-        Args:
-            ticker: Market ticker symbol
-            depth: Depth of orderbook to fetch
-            
-        Returns:
-            Orderbook dictionary with yes and no orders
-        """
-        try:
-            response = self.session.get(
-                f"{self.BASE_URL}/markets/{ticker}/orderbook",
-                params={"depth": depth},
-                timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("orderbook")
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching orderbook for {ticker}: {e}")
+
+    @staticmethod
+    def _parse_close_time(m: Dict) -> Optional[datetime]:
+        ts = m.get("close_time")
+        if not ts:
             return None
-    
-    def search_markets(self, query: str, limit: int = 100) -> List[Dict]:
-        """
-        Search for markets matching a query.
-        
-        Args:
-            query: Search query string
-            limit: Number of results to return
-            
-        Returns:
-            List of matching markets
-        """
-        data = self.get_nfl_markets(limit=limit)
-        markets = data.get("markets", [])
-        
-        if not query:
-            return markets
-        
-        query_lower = query.lower()
-        return [
-            m for m in markets
-            if query_lower in m.get("title", "").lower() or
-               query_lower in m.get("event_ticker", "").lower() or
-               query_lower in m.get("subtitle", "").lower()
-        ]
-    
-    def group_markets_by_event(self, markets: List[Dict]) -> Dict[str, List[Dict]]:
-        """
-        Group markets by their event ticker.
-        
-        Args:
-            markets: List of market dictionaries
-            
-        Returns:
-            Dictionary mapping event tickers to lists of markets
-        """
-        grouped = {}
-        for market in markets:
-            event_ticker = market.get("event_ticker", "Unknown")
-            if event_ticker not in grouped:
-                grouped[event_ticker] = []
-            grouped[event_ticker].append(market)
-        
-        return grouped
-    
-    def format_market_title(self, market: Dict) -> str:
-        """Format a readable market title."""
-        title = market.get("title", market.get("ticker", "Unknown Market"))
-        return title
-    
-    def get_market_probability(self, market: Dict) -> float:
-        """Get the current probability (last price) for a market."""
-        return market.get("yes_bid", 0) / 100.0 if market.get("yes_bid") else 0.0
-    
-    def parse_event_ticker(self, event_ticker: str) -> Tuple[str, str, str, str]:
-        """
-        Parse event ticker to extract market type, date, and teams.
-        Format: KXNFL{TYPE}-{DATE}{TEAM1}{TEAM2}
-        
-        Returns:
-            (market_type, date, team1, team2)
-        """
-        if not event_ticker or not event_ticker.startswith("KXNFL"):
-            return ("Unknown", "", "", "")
-        
-        if event_ticker.startswith("KXMVENFL"):
-            return ("MVE", "", "", "")
-        
-        parts = event_ticker.split('-')
-        if len(parts) < 2:
-            return ("Unknown", "", "", "")
-        
-        type_part = parts[0].replace("KXNFL", "")
-        
-        suffix = parts[1]
-        
-        date_match = re.match(r'(\d{8})', suffix)
-        if not date_match:
-            return (type_part, "", "", "")
-        
-        date = date_match.group(1)
-        team_suffix = suffix[8:]
-        
-        team1 = ""
-        team2 = ""
-        for team_code in sorted(self.TEAM_NAMES.keys(), key=len, reverse=True):
-            if team_suffix.endswith(team_code):
-                team2 = team_code
-                team_suffix = team_suffix[:-len(team_code)]
-                break
-        
-        if team_suffix:
-            for team_code in sorted(self.TEAM_NAMES.keys(), key=len, reverse=True):
-                if team_suffix == team_code:
-                    team1 = team_code
-                    break
-        
-        return (type_part, date, team1, team2)
-    
-    def get_category_name(self, market_type: str) -> str:
-        """Get human-readable category name from market type code."""
-        return self.MARKET_CATEGORY_MAP.get(market_type, "Other Markets")
-    
-    def get_team_name(self, team_code: str) -> str:
-        """Get full team name from team code."""
-        return self.TEAM_NAMES.get(team_code, team_code)
-    
-    def expand_team_abbreviations(self, text: str) -> str:
-        """
-        Replace abbreviated team names in text with full names.
-        Handles cases like "Los Angeles C " → "Los Angeles Chargers "
-        Only replaces when followed by space/comma/punctuation to avoid duplicates.
-        """
-        replacements = {
-            r'\bLos Angeles C\b': 'Los Angeles Chargers',
-            r'\bLos Angeles R\b': 'Los Angeles Rams',
-            r'\bNew York G\b': 'New York Giants',
-            r'\bNew York J\b': 'New York Jets'
-        }
-        
-        result = text
-        for pattern, replacement in replacements.items():
-            result = re.sub(pattern, replacement, result)
-        
-        return result
-    
-    def parse_display_name(self, market: Dict) -> str:
-        """
-        Generate intuitive display name from market data.
-        Uses title/subtitle from API, or parses ticker if needed.
-        """
-        title = market.get("title", "").strip()
-        subtitle = market.get("subtitle", "").strip()
-        
-        if title and title != "":
-            title = self.expand_team_abbreviations(title)
-            if subtitle and subtitle != "":
-                subtitle = self.expand_team_abbreviations(subtitle)
-                return f"{title}: {subtitle}"
-            return title
-        
-        ticker = market.get("ticker", "")
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    @classmethod
+    def _normalize_team_name(cls, s: str) -> Optional[str]:
+        raw = (s or "").strip()
+        if not raw:
+            return None
+        t = raw.lower()
+        # abbr
+        for ab, full in cls.TEAM_MAP.items():
+            if t == ab.lower():
+                return full
+        # contains city or nickname
+        for full in cls.TEAM_NAMES:
+            if " " in full:
+                city, nick = full.split(" ", 1)
+                if city.lower() in t or nick.lower() in t:
+                    return full
+        # close match
+        cand = get_close_matches(raw, cls.TEAM_NAMES, n=1, cutoff=0.6)
+        return cand[0] if cand else None
+
+    @classmethod
+    def _extract_event_name_from_text(
+            cls, markets: List[Dict]) -> Optional[Tuple[str, str, str]]:
+        for m in markets:
+            head = (m.get("title") or "").split(":", 1)[0]
+            sub = (m.get("subtitle") or "")
+            text = " ".join([head, sub])
+            mobj = re.search(r"(.+?)\s+at\s+(.+)", text, flags=re.I)
+            if not mobj:
+                continue
+            away_raw, home_raw = mobj.group(1), mobj.group(2)
+            away = cls._normalize_team_name(away_raw) or away_raw.strip()
+            home = cls._normalize_team_name(home_raw) or home_raw.strip()
+            return away, home, f"{away} at {home}"
+        return None
+
+    @classmethod
+    def _decode_home_away_from_event_ticker(
+            cls, event_ticker: str) -> Optional[Tuple[str, str]]:
+        if not event_ticker:
+            return None
+        codes = re.findall(r"[A-Z]{2,3}", event_ticker.upper())
+        valid = [c for c in codes if c in cls.TEAM_ABBRS]
+        if len(valid) >= 2:
+            away3, home3 = valid[-2], valid[-1]
+            return cls.TEAM_MAP[away3], cls.TEAM_MAP[home3]
+        return None
+
+    def _subject_from_ticker_suffix(self,
+                                    ticker: Optional[str]) -> Optional[str]:
         if not ticker:
-            return "Unknown Market"
-        
-        parts = ticker.split('-')
-        if len(parts) >= 3:
-            player_threshold = parts[-1]
-            
-            player_match = re.match(r'([A-Z]+)([A-Z][a-z]+)(\d+)-(\d+)', player_threshold)
-            if player_match:
-                team, last_name, jersey, threshold = player_match.groups()
-                first_initial = player_threshold[len(team)]
-                return f"{first_initial}. {last_name} #{jersey}: {threshold}+ yards"
-        
-        return ticker
-    
-    def normalize_market(self, market: Dict) -> Dict:
-        """
-        Normalize market data with calculated fields for display.
-        Adds: category, matchup, display_name, display_probability, display_volume
-        """
-        event_ticker = market.get("event_ticker", "")
-        market_type, date, team1_code, team2_code = self.parse_event_ticker(event_ticker)
-        
-        category = self.get_category_name(market_type)
-        
-        matchup = "General"
-        if team1_code and team2_code:
-            team1 = self.get_team_name(team1_code)
-            team2 = self.get_team_name(team2_code)
-            matchup = f"{team1} @ {team2}"
-        
-        yes_bid = market.get("yes_bid", 0)
-        last_price = market.get("last_price", 0)
-        mid_price = market.get("mid_price", 0)
-        
-        price = yes_bid if yes_bid > 0 else (last_price if last_price > 0 else mid_price)
-        probability = price / 100.0
-        
-        volume = market.get("volume", market.get("volume_24h", market.get("liquidity", 0)))
-        
-        display_name = self.parse_display_name(market)
-        
-        normalized = market.copy()
-        normalized.update({
-            "category": category,
-            "matchup": matchup,
-            "display_name": display_name,
-            "display_probability": probability,
-            "display_probability_pct": f"{probability * 100:.0f}%",
-            "display_volume": volume,
-            "market_type_code": market_type
-        })
-        
-        return normalized
-    
-    def combine_market_pair(self, markets: List[Dict]) -> Optional[Dict]:
-        """
-        Combine two opposing markets (same game, different teams) into one combined market.
-        
-        Args:
-            markets: List of 2 markets representing opposite sides of the same game
-            
-        Returns:
-            Combined market dictionary with both team contracts, or None if can't combine
-        """
-        if len(markets) != 2:
             return None
-        
-        m1, m2 = markets
-        ticker1 = m1.get("ticker", "")
-        ticker2 = m2.get("ticker", "")
-        
-        team1_code = ticker1.split('-')[-1] if '-' in ticker1 else ""
-        team2_code = ticker2.split('-')[-1] if '-' in ticker2 else ""
-        
-        if not team1_code or not team2_code:
+        m = re.search(r"-([A-Z]{2,3})$", ticker.upper())
+        if not m:
             return None
-        
-        team1_name = self.get_team_name(team1_code)
-        team2_name = self.get_team_name(team2_code)
-        
-        event_ticker = m1.get("event_ticker", "")
-        market_type, date, away_code, home_code = self.parse_event_ticker(event_ticker)
-        
-        away_market = m1 if team1_code == away_code else m2
-        home_market = m2 if team1_code == away_code else m1
-        away_name = self.get_team_name(away_code) if away_code else team1_name
-        home_name = self.get_team_name(home_code) if home_code else team2_name
-        
-        away_prob = self._get_probability(away_market)
-        home_prob = self._get_probability(home_market)
-        
-        combined_volume = max(
-            away_market.get("volume", 0),
-            home_market.get("volume", 0)
-        )
-        if combined_volume == 0:
-            combined_volume = max(
-                away_market.get("volume_24h", 0),
-                home_market.get("volume_24h", 0)
-            )
-        
-        combined = {
-            "event_ticker": event_ticker,
-            "category": self.get_category_name(market_type),
-            "matchup": f"{away_name} @ {home_name}",
-            "display_name": m1.get("title", ""),
-            "away_team": away_name,
-            "away_team_code": away_code,
-            "away_ticker": away_market.get("ticker", ""),
-            "away_probability": away_prob,
-            "away_probability_pct": f"{away_prob * 100:.0f}%",
-            "home_team": home_name,
-            "home_team_code": home_code,
-            "home_ticker": home_market.get("ticker", ""),
-            "home_probability": home_prob,
-            "home_probability_pct": f"{home_prob * 100:.0f}%",
-            "display_volume": combined_volume,
-            "market_type_code": market_type,
-            "away_contract": away_market,
-            "home_contract": home_market
+        return self.TEAM_MAP.get(m.group(1))
+
+    def _subject_from_text(self, title: str, subtitle: str, away_name: str,
+                           home_name: str) -> Optional[str]:
+        text = " ".join(filter(None, [title, subtitle])).lower()
+        scores = {away_name: 0, home_name: 0}
+        for team in (away_name, home_name):
+            for tok in team.lower().split():
+                if tok and tok in text:
+                    scores[team] += 1
+        if scores[away_name] == scores[home_name] == 0:
+            return None
+        return away_name if scores[away_name] >= scores[
+            home_name] else home_name
+
+    # ---------------- Fetch & combine ----------------
+
+    def get_nfl_game_markets(self,
+                             limit: int = 500,
+                             cursor: Optional[str] = None) -> Dict:
+        params = {
+            "series_ticker": self.SERIES_TICKER_GAME,
+            "status": "open",
+            "limit": max(1, min(limit, 1000))
         }
-        
-        return combined
-    
-    def _get_probability(self, market: Dict) -> float:
-        """Helper to get probability from market with fallback chain."""
-        yes_bid = market.get("yes_bid", 0)
-        last_price = market.get("last_price", 0)
-        mid_price = market.get("mid_price", 0)
-        
-        price = yes_bid if yes_bid > 0 else (last_price if last_price > 0 else mid_price)
-        return price / 100.0
-    
-    def get_normalized_markets(self, limit: int = 100, cursor: Optional[str] = None) -> Dict:
-        """
-        Fetch and normalize NFL markets, combining paired markets into single rows.
-        
-        Returns:
-            Dictionary with combined markets and cursor
-        """
-        data = self.get_nfl_markets(limit=limit, cursor=cursor)
-        markets = data.get("markets", [])
-        
-        grouped = self.group_markets_by_event(markets)
-        
-        combined_markets = []
-        for event_ticker, event_markets in grouped.items():
-            combined = self.combine_market_pair(event_markets)
-            if combined:
-                combined_markets.append(combined)
-            else:
-                for m in event_markets:
-                    combined_markets.append(self.normalize_market(m))
-        
+        if cursor:
+            params["cursor"] = cursor
+        data = self._get("/markets", params=params)
         return {
-            "markets": combined_markets,
+            "markets": data.get("markets", []),
             "cursor": data.get("cursor")
         }
+
+    def get_all_open_games(self, max_pages: int = 20) -> List[Dict]:
+        out, cursor, pages = [], None, 0
+        while pages < max_pages:
+            page = self.get_nfl_game_markets(limit=500, cursor=cursor)
+            out.extend(page["markets"])
+            cursor = page["cursor"]
+            pages += 1
+            if not cursor:
+                break
+        return out
+
+    def group_by_event(self, markets: List[Dict]) -> Dict[str, List[Dict]]:
+        grouped: Dict[str, List[Dict]] = {}
+        for m in markets:
+            et = m.get("event_ticker") or "UNKNOWN_EVENT"
+            grouped.setdefault(et, []).append(m)
+        return grouped
+
+    def normalize_market(self, m: Dict) -> Dict:
+        return {
+            "ticker": m.get("ticker"),
+            "event_ticker": m.get("event_ticker"),
+            "series_ticker": m.get("series_ticker"),
+            "title": m.get("title"),
+            "subtitle": m.get("subtitle"),
+            "market_type": m.get("market_type"),
+            "close_time": m.get("close_time"),
+            "close_dt": self._parse_close_time(m),
+            "yes_bid": self._cents_to_dollars(m.get("yes_bid")),
+            "yes_ask": self._cents_to_dollars(m.get("yes_ask")),
+            "open_interest": m.get("open_interest"),
+            "volume_24h": m.get("volume_24h"),
+        }
+
+    def combine_event_contracts(self, event_markets: List[Dict]) -> Dict:
+        """
+        Build a combined record with ONE primary Winner market (HOME preferred).
+        We compute the NO side using the *opposite* team when possible.
+        """
+        em = [self.normalize_market(m) for m in event_markets]
+        et = em[0].get("event_ticker")
+
+        names = self._decode_home_away_from_event_ticker(et or "")
+        if names:
+            away_name, home_name = names
+            pretty = f"{away_name} at {home_name}"
+        else:
+            parsed = self._extract_event_name_from_text(em)
+            if parsed:
+                away_name, home_name, pretty = parsed
+            else:
+                away_name, home_name, pretty = "Away", "Home", (
+                    em[0].get("title") or et or "Unknown matchup")
+
+        away_win, home_win = None, None
+        for m in em:
+            title = m.get("title") or ""
+            if "winner" not in title.lower():
+                continue
+            subject = self._subject_from_ticker_suffix(m.get("ticker"))
+            if subject is None:
+                subject = self._subject_from_text(title,
+                                                  m.get("subtitle") or "",
+                                                  away_name, home_name)
+            if subject == away_name:
+                away_win = m
+            elif subject == home_name:
+                home_win = m
+
+        # choose primary (home preferred), keep secondary for complements
+        primary = home_win or away_win
+        secondary = away_win if primary is home_win else home_win
+
+        # fabricate safe empty
+        if primary is None:
+            primary = {
+                "yes_bid": None,
+                "yes_ask": None,
+                "ticker": None,
+                "title": "",
+                "subtitle": ""
+            }
+
+        subject_team = home_name if primary is home_win else (
+            away_name if primary is away_win else home_name)
+
+        yes_bid = primary.get("yes_bid")
+        yes_ask = primary.get("yes_ask")
+
+        # Best-effort NO price: use opposite team’s ask/bid first; fallback to own complements.
+        def comp(v: Optional[float]) -> Optional[float]:
+            return round(1 - v, 2) if v is not None else None
+
+        sec_yes_bid = secondary.get("yes_bid") if secondary else None
+        sec_yes_ask = secondary.get("yes_ask") if secondary else None
+
+        no_bid = comp(sec_yes_ask) if sec_yes_ask is not None else comp(
+            yes_ask)
+        no_ask = comp(sec_yes_bid) if sec_yes_bid is not None else comp(
+            yes_bid)
+
+        close_dt = min([x["close_dt"] for x in em if x.get("close_dt")],
+                       default=None)
+        oi_sum = sum([x.get("open_interest") or 0 for x in em])
+        vol_sum = sum([x.get("volume_24h") or 0 for x in em])
+
+        return {
+            "event_ticker": et,
+            "pretty_event": pretty,
+            "away_team": away_name,
+            "home_team": home_name,
+            "close_dt": close_dt,
+            "open_interest_sum": oi_sum,
+            "volume_24h_sum": vol_sum,
+            "winner_primary": {
+                "label": f"{subject_team} — Winner?",
+                "subject_team": subject_team,
+                "yes_bid": yes_bid,
+                "yes_ask": yes_ask,
+                "no_bid": no_bid,
+                "no_ask": no_ask,
+                "ticker": primary.get("ticker"),
+            },
+            "all_contracts": em,
+        }
+
+    def fetch_and_group_open_games(self) -> List[Dict]:
+        all_markets = self.get_all_open_games()
+        groups = self.group_by_event(all_markets)
+        combined: List[Dict] = []
+        for _, markets in groups.items():
+            combined.append(self.combine_event_contracts(markets))
+        combined.sort(key=lambda g: (g["close_dt"] or datetime.max))
+        return combined
+
+    # ---------------- Historical Data ----------------
+
+    def get_market_candlesticks(
+            self,
+            series_ticker: str,
+            ticker: str,
+            period_interval: int = 60) -> Optional[List[Dict]]:
+        """
+        Fetch historical price data (OHLC candlesticks).
+        
+        Args:
+            series_ticker: Series ticker (e.g., 'KXNFLGAME')
+            ticker: Market ticker
+            period_interval: Time period in minutes (1, 60, or 1440)
+        
+        Returns:
+            List of candlestick dicts or None on error
+        """
+        try:
+            path = f"/series/{series_ticker}/markets/{ticker}/candlesticks"
+            params = {"period_interval": period_interval}
+            data = self._get(path, params=params)
+            candlesticks = data.get("candlesticks", [])
+            
+            # Convert cents to dollars
+            for candle in candlesticks:
+                candle["open"] = self._cents_to_dollars(candle.get("open"))
+                candle["high"] = self._cents_to_dollars(candle.get("high"))
+                candle["low"] = self._cents_to_dollars(candle.get("low"))
+                candle["close"] = self._cents_to_dollars(candle.get("close"))
+            
+            return candlesticks
+        except Exception:
+            return None
+
+    def get_market_orderbook(self, ticker: str) -> Optional[Dict]:
+        """
+        Fetch current orderbook for a market.
+        
+        Args:
+            ticker: Market ticker
+        
+        Returns:
+            Orderbook dict or None on error
+        """
+        try:
+            path = f"/markets/{ticker}/orderbook"
+            data = self._get(path, params={})
+            
+            # Convert cents to dollars for all orders
+            if "yes" in data:
+                for order in data["yes"]:
+                    order["price"] = self._cents_to_dollars(order.get("price"))
+            if "no" in data:
+                for order in data["no"]:
+                    order["price"] = self._cents_to_dollars(order.get("price"))
+            
+            return data
+        except Exception:
+            return None

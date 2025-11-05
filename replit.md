@@ -2,9 +2,20 @@
 
 This is an NFL prediction markets explorer built with Streamlit that integrates with the Kalshi betting API and OpenAI for AI-powered market insights. The application displays markets in a hierarchical structure matching Kalshi's UI, with automatic categorization, team name normalization, and AI-generated analysis powered by GPT-5.
 
-# Recent Changes (October 23, 2025)
+# Recent Changes (November 5, 2025)
 
-## Latest Update: Fixed AI Market Brief Generation
+## Latest Update: Enhanced Event Context and Historical Data
+- **Market Overview Dashboard** - Added metric cards with explanations for 24h volume, open interest, and time remaining
+- **Historical Price Charts** - Hourly price movement visualization with trend indicators (📈 Rising, 📉 Falling, ➡️ Stable)
+- **Volume History** - Collapsible chart showing trading volume spikes over time
+- **Order Book Display** - Real-time pending YES and NO orders with explanatory context
+- **Market Mechanics Guide** - Info boxes explaining bid/ask pricing, implied probability, and trading concepts
+- **Human-Readable Time Display** - Shows "Market closes in X days/hours" instead of raw timestamps
+- **Comprehensive Descriptions** - All metrics include help tooltips and plain-language explanations
+- **New API Methods** - Added `get_market_candlesticks()` and `get_market_orderbook()` to KalshiService
+- **Graceful Degradation** - Missing historical data shows helpful info messages instead of errors
+
+## Fixed AI Market Brief Generation
 - **Resolved empty content issue** - AI briefs now generate successfully
 - **Root cause**: GPT-5 reasoning tokens consumed entire 500-token budget, leaving zero for output
 - **Solution**: Increased `max_completion_tokens` to 5000 and added `reasoning_effort="low"`

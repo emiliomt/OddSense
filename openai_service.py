@@ -1,138 +1,76 @@
+# openai_service.py
+import json
 import os
-from openai import OpenAI
-from typing import Dict, Optional
+from typing import Optional
 
-# Using OpenAI blueprint for python_openai integration
-# the newest OpenAI model is "gpt-5" which was released August 7, 2025.
-# do not change this unless explicitly requested by the user
+try:
+    from openai import OpenAI
+except Exception:  # library not installed; keep module import-safe
+    OpenAI = None  # type: ignore
+
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+
 
 class OpenAIService:
-    """Service for generating AI-powered market insights using OpenAI."""
-    
-    def __init__(self):
+    """
+    Minimal wrapper for generating compact market blurbs.
+    - Does NOT crash if no key or client.
+    - Uses Responses API, robust text extraction.
+    """
+
+    def __init__(self) -> None:
         api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        
-        self.client = OpenAI(api_key=api_key)
-    
-    def generate_market_brief(self, market_data: Dict) -> str:
-        """
-        Generate an AI-powered market brief for a Kalshi NFL market.
-        
-        Args:
-            market_data: Dictionary containing market information
-            
-        Returns:
-            AI-generated market brief as a string
-        """
-        ticker = market_data.get("ticker", "Unknown")
-        title = market_data.get("title", "Unknown Market")
-        subtitle = market_data.get("subtitle", "")
-        yes_bid = market_data.get("yes_bid", 0)
-        no_bid = market_data.get("no_bid", 0)
-        volume = market_data.get("volume", 0)
-        open_interest = market_data.get("open_interest", 0)
-        close_time = market_data.get("close_time", "Unknown")
-        
-        prompt = f"""You are a sports betting market analyst. Analyze this NFL prediction market from Kalshi and provide a concise, insightful brief.
+        self.enabled = bool(api_key and OpenAI)
+        self.client = OpenAI(api_key=api_key) if self.enabled else None
 
-Market: {title}
-{subtitle if subtitle else ''}
+    def summarize_market(self, matchup: str, probability: Optional[float],
+                         volume_24h: Optional[int]) -> str:
+        prob_txt = f"{probability*100:.1f}%" if probability is not None else "N/A"
+        vol_txt = f"{volume_24h:,}" if volume_24h is not None else "N/A"
 
-Current Market Data:
-- Yes Bid: {yes_bid}¢ (implies {yes_bid}% probability)
-- No Bid: {no_bid}¢ (implies {100 - yes_bid}% probability)
-- Trading Volume: ${volume}
-- Open Interest: {open_interest} contracts
-- Market Closes: {close_time}
+        if not self.enabled:
+            return f"{matchup}: implied {prob_txt}, 24h vol {vol_txt}."
 
-Provide a brief analysis (3-4 sentences) covering:
-1. What this market is asking and its current implied probability
-2. Key factors that could influence the outcome
-3. Any notable aspects of the current pricing or trading activity
-
-Keep it concise, informative, and focused on actionable insights for traders."""
+        prompt = (
+            "You are a concise NFL market analyst. Using only the provided numbers, write <=80 words:\n"
+            "• State the matchup.\n"
+            "• Give implied probability and 24h volume context.\n"
+            "• Mention any large bid/ask gap briefly if present.\n"
+            "Neutral tone. Do not invent numbers.")
+        payload = {
+            "matchup": matchup,
+            "implied_prob": probability,
+            "volume_24h": volume_24h
+        }
 
         try:
-            # Using gpt-5 model - a reasoning model that uses hidden reasoning tokens
-            # Need higher max_completion_tokens since reasoning consumes tokens too
-            response = self.client.chat.completions.create(
-                model="gpt-5",
-                messages=[
+            rsp = self.client.responses.create(
+                model=DEFAULT_MODEL,
+                input=[
                     {
                         "role": "system",
-                        "content": "You are an expert sports betting analyst specializing in NFL prediction markets. Provide clear, concise analysis."
+                        "content": "Be precise; do not invent numbers."
                     },
                     {
                         "role": "user",
                         "content": prompt
-                    }
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(payload)
+                    },
                 ],
-                max_completion_tokens=5000,  # Increased from 500 to account for reasoning tokens
-                reasoning_effort="low"  # Use low effort for simple analysis tasks
+                max_output_tokens=180,
+                temperature=0.2,
             )
-            
-            # Debug logging for response analysis
-            choice = response.choices[0]
-            print(f"[DEBUG] OpenAI Response Details:")
-            print(f"  - finish_reason: {choice.finish_reason}")
-            print(f"  - content: {choice.message.content}")
-            print(f"  - refusal: {getattr(choice.message, 'refusal', None)}")
-            print(f"  - usage: {response.usage}")
-            
-            # Check for refusal
-            if hasattr(choice.message, 'refusal') and choice.message.refusal:
-                return f"Unable to generate market brief: Model refused - {choice.message.refusal}"
-            
-            # Check finish reason
-            if choice.finish_reason == "length":
-                return "Unable to generate market brief: Response was cut off (token limit). Try viewing a different market."
-            
-            # Get content
-            content = choice.message.content
-            
-            if content:
-                return content
-            else:
-                # Provide detailed debugging info if content is empty
-                debug_info = f"finish_reason={choice.finish_reason}, has_refusal={hasattr(choice.message, 'refusal')}"
-                return f"Unable to generate market brief: No content returned ({debug_info})"
-        
-        except Exception as e:
-            print(f"[ERROR] OpenAI API Exception: {type(e).__name__}: {str(e)}")
-            return f"Unable to generate market brief: {type(e).__name__}: {str(e)}"
-    
-    def generate_quick_insight(self, title: str, probability: float, volume: int) -> str:
-        """
-        Generate a quick one-liner insight about a market.
-        
-        Args:
-            title: Market title
-            probability: Current probability (0-1)
-            volume: Trading volume
-            
-        Returns:
-            Quick insight string
-        """
-        try:
-            prompt = f"""Give a single sentence insight about this NFL betting market:
-Market: {title}
-Current Probability: {probability*100:.1f}%
-Volume: ${volume}
-
-Provide ONE concise sentence highlighting what's interesting about this market."""
-
-            response = self.client.chat.completions.create(
-                model="gpt-5",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_completion_tokens=100
-            )
-            
-            content = response.choices[0].message.content
-            return content if content else f"Market trading at {probability*100:.1f}% probability with ${volume} volume"
-        
-        except Exception as e:
-            return f"Market trading at {probability*100:.1f}% probability with ${volume} volume"
+            # Robust extraction across client versions
+            text = getattr(rsp, "output_text", "") or ""
+            if not text:
+                try:
+                    text = rsp.output[0].content[0].text
+                except Exception:
+                    text = ""
+            return text.strip(
+            ) or f"{matchup}: implied {prob_txt}, 24h vol {vol_txt}."
+        except Exception:
+            return f"{matchup}: implied {prob_txt}, 24h vol {vol_txt}."

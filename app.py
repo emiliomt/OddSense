@@ -1,403 +1,465 @@
-import streamlit as st
-import pandas as pd
-from kalshi_service import KalshiService
-from openai_service import OpenAIService
-import plotly.graph_objects as go
-from datetime import datetime
+# app.py
+import os
+from datetime import datetime, timezone
+from typing import Optional
 
-st.set_page_config(
-    page_title="NFL Kalshi Markets",
-    page_icon="🏈",
-    layout="wide"
-)
+import pandas as pd
+import requests
+import streamlit as st
+
+from espn_lookup import find_game_id
+from kalshi_service import KalshiService
+
+st.set_page_config(page_title="NFL Kalshi Markets",
+                   page_icon="🏈",
+                   layout="wide")
+
+CONTEXT_URL = os.getenv("CONTEXT_URL", "http://localhost:8000")
+
 
 @st.cache_resource
-def get_kalshi_service():
+def get_kalshi() -> KalshiService:
     return KalshiService()
 
-@st.cache_resource
-def get_openai_service():
-    return OpenAIService()
 
-def init_session_state():
-    """Initialize session state variables."""
-    if 'page' not in st.session_state:
-        st.session_state.page = 'list'
-    if 'selected_ticker' not in st.session_state:
-        st.session_state.selected_ticker = None
-    if 'selected_event' not in st.session_state:
-        st.session_state.selected_event = None
-    if 'selected_market' not in st.session_state:
-        st.session_state.selected_market = None
-    if 'current_page' not in st.session_state:
-        st.session_state.current_page = 0
-    if 'search_query' not in st.session_state:
-        st.session_state.search_query = ""
-    if 'page_cursors' not in st.session_state:
-        st.session_state.page_cursors = [None]
-    if 'current_markets' not in st.session_state:
-        st.session_state.current_markets = []
-    if 'has_more' not in st.session_state:
-        st.session_state.has_more = False
+def qp_get(name: str, default: str = "list") -> str:
+    try:
+        return st.query_params.get(name, default)
+    except Exception:
+        return st.experimental_get_query_params().get(name, [default])[0]
 
-def show_market_list():
-    """Display the main market listing page."""
-    st.title("🏈 NFL Prediction Markets")
-    st.markdown("Explore NFL betting markets on Kalshi with AI-powered insights")
-    
-    kalshi = get_kalshi_service()
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        search = st.text_input(
-            "🔍 Search markets",
-            value=st.session_state.search_query,
-            placeholder="Search by team, game, or market type..."
+
+def qp_set(**kwargs):
+    try:
+        st.query_params.update(kwargs)
+    except Exception:
+        st.experimental_set_query_params(**kwargs)
+
+
+def init_state():
+    st.session_state.setdefault("search", "")
+    st.session_state.setdefault("events_per_page", 12)
+    st.session_state.setdefault("p", 1)
+
+
+def pct(x: Optional[float]) -> str:
+    return f"{x*100:.0f}%" if isinstance(x, (int, float)) else "—"
+
+
+def call_context(game_id: str, include_llm: bool = True) -> Optional[dict]:
+    try:
+        r = requests.get(
+            f"{CONTEXT_URL}/context",
+            params={
+                "game_id": game_id,
+                "include_llm": str(include_llm).lower()
+            },
+            timeout=45,
         )
-        if search != st.session_state.search_query:
-            st.session_state.search_query = search
-            st.session_state.current_page = 0
-            st.session_state.page_cursors = [None]
-            st.session_state.current_markets = []
-    
-    with col2:
-        markets_per_page = st.selectbox("Markets per page", [25, 50, 100], index=0)
-    
-    current_cursor = st.session_state.page_cursors[st.session_state.current_page]
-    
-    with st.spinner("Loading NFL markets..."):
-        data = kalshi.get_normalized_markets(limit=markets_per_page, cursor=current_cursor)
-        markets = data.get("markets", [])
-        next_cursor = data.get("cursor")
-        
-        if st.session_state.search_query:
-            search_lower = st.session_state.search_query.lower()
-            markets = [
-                m for m in markets
-                if search_lower in m.get("display_name", "").lower()
-                or search_lower in m.get("matchup", "").lower()
-                or search_lower in m.get("category", "").lower()
-            ]
-        
-        st.session_state.current_markets = markets
-        st.session_state.has_more = bool(next_cursor)
-        
-        if next_cursor and len(st.session_state.page_cursors) == st.session_state.current_page + 1:
-            st.session_state.page_cursors.append(next_cursor)
-        
-        if not markets:
-            st.info("No NFL markets found on this page.")
-            if not st.session_state.has_more and st.session_state.current_page == 0:
-                st.warning("No NFL markets available. Please try again later.")
-            return
-        
-        nested_markets = {}
-        for market in markets:
-            category = market.get("category", "Other Markets")
-            matchup = market.get("matchup", "General")
-            
-            if category not in nested_markets:
-                nested_markets[category] = {}
-            if matchup not in nested_markets[category]:
-                nested_markets[category][matchup] = []
-            
-            nested_markets[category][matchup].append(market)
-        
-        total_categories = len(nested_markets)
-        st.markdown(f"### Showing {len(markets)} markets across {total_categories} categories (Page {st.session_state.current_page + 1})")
-        
-        for category in sorted(nested_markets.keys()):
-            st.markdown(f"## 🏈 {category}")
-            
-            matchups = nested_markets[category]
-            for matchup in sorted(matchups.keys()):
-                market_list = matchups[matchup]
-                
-                if matchup != "General":
-                    st.markdown(f"### 🏟️ {matchup}")
-                
-                for market in market_list:
-                    if "away_team" in market and "home_team" in market:
-                        col1, col2, col3, col4 = st.columns([4, 2, 1, 1])
-                        
-                        with col1:
-                            display_name = market.get("display_name", "Unknown Market")
-                            st.markdown(f"**{display_name}**")
-                        
-                        with col2:
-                            away_team = market.get("away_team", "")
-                            home_team = market.get("home_team", "")
-                            away_prob = market.get("away_probability_pct", "0%")
-                            home_prob = market.get("home_probability_pct", "0%")
-                            st.markdown(f"**{away_team[:3].upper()}:** {away_prob} | **{home_team[:3].upper()}:** {home_prob}")
-                        
-                        with col3:
-                            volume = market.get("display_volume", 0)
-                            st.metric("Volume", f"${volume:,.0f}")
-                        
-                        with col4:
-                            event_ticker = market.get("event_ticker", "")
-                            if st.button("📊 Details", key=f"btn_{event_ticker}"):
-                                st.session_state.selected_ticker = None
-                                st.session_state.selected_event = event_ticker
-                                st.session_state.selected_market = market
-                                st.session_state.page = 'detail'
-                                st.rerun()
-                    else:
-                        col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
-                        
-                        with col1:
-                            display_name = market.get("display_name", "Unknown Market")
-                            st.markdown(f"**{display_name}**")
-                        
-                        with col2:
-                            prob_pct = market.get("display_probability_pct", "0%")
-                            st.metric("Probability", prob_pct)
-                        
-                        with col3:
-                            volume = market.get("display_volume", 0)
-                            st.metric("Volume", f"${volume:,.0f}")
-                        
-                        with col4:
-                            ticker = market.get("ticker", "")
-                            if st.button("📊 Details", key=f"btn_{ticker}"):
-                                st.session_state.selected_market = None
-                                st.session_state.selected_event = None
-                                st.session_state.selected_ticker = ticker
-                                st.session_state.page = 'detail'
-                                st.rerun()
-                
-                st.markdown("---")
-        
-        st.markdown("---")
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        
-        with col1:
-            if st.session_state.current_page > 0:
-                if st.button("⬅️ Previous"):
-                    st.session_state.current_page -= 1
-                    st.rerun()
-        
-        with col2:
-            page_info = f"Page {st.session_state.current_page + 1}"
-            if st.session_state.has_more:
-                page_info += " (more available)"
-            st.markdown(f"<div style='text-align: center'>{page_info}</div>", unsafe_allow_html=True)
-        
-        with col3:
-            if st.session_state.has_more:
-                if st.button("Next ➡️"):
-                    st.session_state.current_page += 1
-                    st.rerun()
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.ConnectionError:
+        st.error(
+            f"Context service not reachable at {CONTEXT_URL}. "
+            f"Start your FastAPI server (uvicorn context_service:app --port 8000) or set CONTEXT_URL."
+        )
+        return None
+    except Exception as e:
+        st.error(f"Context service error: {e}")
+        return None
 
-def show_market_detail():
-    """Display detailed market information."""
-    kalshi = get_kalshi_service()
-    openai_service = get_openai_service()
+
+def pick_display_label_and_bid(w: dict) -> tuple[str, Optional[float]]:
+    """
+    Only show one bid (%) per game:
+      - Prefer YES bid if available → "<TEAM> — Yes"
+      - Else prefer NO bid if available → "<TEAM> — No"
+      - Else show '—'
+    """
+    team = w.get("subject_team") or "Team"
+    yes_bid = w.get("yes_bid")
+    no_bid = w.get("no_bid")
+    if yes_bid is not None:
+        return f"{team} — Yes", yes_bid
+    if no_bid is not None:
+        return f"{team} — No", no_bid
+    return f"{team} — Yes", None
+
+
+def page_list():
+    st.title("🏈 NFL Kalshi Markets — Games")
+
+    with st.sidebar:
+        st.subheader("Filters")
+        st.session_state.search = st.text_input("Search teams/market text",
+                                                st.session_state.search)
+        st.session_state.events_per_page = st.number_input(
+            "Events per page",
+            min_value=6,
+            max_value=50,
+            step=2,
+            value=st.session_state.events_per_page)
+
+    kalshi = get_kalshi()
+    events = kalshi.fetch_and_group_open_games()
+
+    # Search
+    q = (st.session_state.search or "").lower().strip()
+    if q:
+
+        def match(ev):
+            if q in (ev["pretty_event"] or "").lower():
+                return True
+            if q in ev["home_team"].lower() or q in ev["away_team"].lower():
+                return True
+            for m in ev["all_contracts"]:
+                t = " ".join([m.get("title") or "",
+                              m.get("subtitle") or ""]).lower()
+                if q in t:
+                    return True
+            return False
+
+        events = [e for e in events if match(e)]
+
+    # Pagination
+    total = len(events)
+    per = int(st.session_state.events_per_page)
+    pages = max(1, (total + per - 1) // per)
+    p = max(1, min(int(st.session_state.p), pages))
+    start, end = (p - 1) * per, min(p * per, total)
+
+    st.caption(f"Showing {start+1}-{end} of {total} events · Page {p}/{pages}")
+
+    # Cards (ONE ROW per game with ONE bid %)
+    for ev in events[start:end]:
+        with st.container(border=True):
+            header = ev.get(
+                "pretty_event") or f"{ev['away_team']} at {ev['home_team']}"
+            st.markdown(f"**{header}**")
+            st.caption(
+                f"Closes: {ev['close_dt'] or 'N/A'} · 24h Vol (sum): **{ev['volume_24h_sum']:,}** · "
+                f"OI (sum): **{ev['open_interest_sum']:,}**")
+
+            cols = st.columns([5, 2, 2])
+            cols[0].markdown("**Market**")
+            cols[1].markdown("**Bid (%)**")
+            cols[2].markdown("**Action**")
+
+            w = ev.get("winner_primary", {}) or {}
+            label, bid_val = pick_display_label_and_bid(w)
+
+            row = st.columns([5, 2, 2])
+            row[0].write(label)
+            row[1].write(pct(bid_val))
+            row[2].link_button("See details",
+                               f"?page=detail&event={ev['event_ticker']}")
+
+    # Pager
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c1:
+        if p > 1 and st.button("⬅️ Prev"):
+            st.session_state.p = p - 1
+            qp_set(page="list")
+            st.rerun()
+    with c2:
+        st.write(f"Page {p}/{pages}")
+    with c3:
+        if p < pages and st.button("Next ➡️"):
+            st.session_state.p = p + 1
+            qp_set(page="list")
+            st.rerun()
+
+
+def page_detail():
+    kalshi = get_kalshi()
+    event_ticker = qp_get("event", "")
+    if not event_ticker:
+        st.warning("No event selected.")
+        return
+
+    events = kalshi.fetch_and_group_open_games()
+    ev = next((e for e in events if e["event_ticker"] == event_ticker), None)
+    if not ev:
+        st.error("Event not found (may have closed).")
+        return
+
+    st.title(
+        ev.get("pretty_event") or f"{ev['away_team']} at {ev['home_team']}")
     
-    if st.button("⬅️ Back to Markets"):
-        st.session_state.page = 'list'
-        st.session_state.selected_market = None
-        st.session_state.selected_event = None
-        st.session_state.selected_ticker = None
-        st.rerun()
-    
-    if 'selected_market' in st.session_state and st.session_state.selected_market and 'selected_event' in st.session_state and st.session_state.selected_event:
-        combined_market = st.session_state.selected_market
+    # Enhanced event context
+    close_dt = ev.get('close_dt')
+    if close_dt:
+        now = datetime.now(timezone.utc)
+        time_diff = close_dt - now
+        hours_left = time_diff.total_seconds() / 3600
         
-        if combined_market.get("event_ticker") == st.session_state.selected_event and "away_team" in combined_market and "home_team" in combined_market:
-            st.title(f"📊 {combined_market.get('display_name', 'Game Market')}")
-            st.subheader(f"{combined_market.get('matchup', '')}")
+        if hours_left > 24:
+            days_left = int(hours_left / 24)
+            time_desc = f"Market closes in **{days_left} days** ({close_dt.strftime('%B %d, %Y at %I:%M %p UTC')})"
+        elif hours_left > 0:
+            time_desc = f"Market closes in **{int(hours_left)} hours** ({close_dt.strftime('%B %d at %I:%M %p UTC')})"
+        else:
+            time_desc = f"Market closed {close_dt.strftime('%B %d, %Y at %I:%M %p UTC')}"
+    else:
+        time_desc = "Close time not available"
+    
+    st.caption(time_desc)
+
+    # Market Metrics Overview with explanations
+    st.subheader("📊 Market Overview")
+    
+    metric_cols = st.columns(3)
+    
+    with metric_cols[0]:
+        st.metric(
+            "24h Trading Volume",
+            f"${ev.get('volume_24h_sum', 0):,}",
+            help="Total dollar volume traded in the last 24 hours across all contracts for this game. Higher volume indicates more active trading and better liquidity."
+        )
+    
+    with metric_cols[1]:
+        st.metric(
+            "Open Interest",
+            f"{ev.get('open_interest_sum', 0):,} contracts",
+            help="Total number of outstanding contracts (positions that haven't been closed). This represents the total amount of money at risk in this market."
+        )
+    
+    with metric_cols[2]:
+        if close_dt:
+            hours_left = (close_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+            if hours_left > 0:
+                st.metric(
+                    "Time Remaining",
+                    f"{int(hours_left)} hours" if hours_left < 48 else f"{int(hours_left/24)} days",
+                    help="Time until this market closes and stops accepting trades. Markets typically close shortly before the event begins."
+                )
+            else:
+                st.metric("Status", "Closed", help="This market has closed and is no longer accepting trades.")
+    
+    st.divider()
+    
+    # ONE display row
+    w = ev.get("winner_primary", {}) or {}
+    label, bid_val = pick_display_label_and_bid(w)
+
+    st.subheader("🏆 Winner Market")
+    st.info(
+        "**How to read this market:** "
+        "The bid price shows what traders are currently willing to pay for a 'Yes' contract. "
+        "A bid of 60% means the market implies a 60% chance of that outcome. "
+        "You can buy 'Yes' if you think the probability is higher, or 'No' if you think it's lower."
+    )
+    
+    grid = st.columns([5, 2, 3])
+    grid[0].markdown("**Market**")
+    grid[1].markdown("**Implied Probability**")
+    grid[2].markdown("**Ticker**")
+
+    r = st.columns([5, 2, 3])
+    r[0].write(label)
+    r[1].write(pct(bid_val))
+    r[2].code(w.get("ticker") or "")
+
+    # Historical Price Chart
+    st.divider()
+    st.subheader("📈 Historical Price Movement")
+    
+    ticker = w.get("ticker")
+    if ticker:
+        st.info(
+            "**Understanding price history:** "
+            "This chart shows how the market's implied probability has changed over time. "
+            "Rising prices indicate growing confidence in the outcome, while falling prices suggest decreasing confidence. "
+            "Watch for trends and sudden movements that might indicate new information entering the market."
+        )
+        
+        import plotly.graph_objects as go
+        
+        # Fetch candlestick data
+        candlesticks = kalshi.get_market_candlesticks(
+            series_ticker=kalshi.SERIES_TICKER_GAME,
+            ticker=ticker,
+            period_interval=60  # 1-hour candles
+        )
+        
+        if candlesticks and len(candlesticks) > 0:
+            timestamps = [c["timestamp"] for c in candlesticks]
+            closes = [c["close"] for c in candlesticks]
+            volumes = [c.get("volume", 0) for c in candlesticks]
             
-            col1, col2 = st.columns(2)
+            # Calculate trend
+            if len(closes) >= 2:
+                price_change = closes[-1] - closes[0]
+                pct_change = (price_change / closes[0] * 100) if closes[0] > 0 else 0
+                
+                if abs(pct_change) > 5:
+                    trend_emoji = "📈" if pct_change > 0 else "📉"
+                    trend_text = f"{trend_emoji} **Market trend:** {'Rising' if pct_change > 0 else 'Falling'} ({pct_change:+.1f}% over the period shown)"
+                else:
+                    trend_text = "➡️ **Market trend:** Stable (minimal movement)"
+                
+                st.caption(trend_text)
             
-            with col1:
-                st.markdown(f"### {combined_market.get('away_team', 'Away Team')}")
-                st.metric("Win Probability", combined_market.get("away_probability_pct", "0%"))
+            # Create price chart
+            fig = go.Figure()
             
-            with col2:
-                st.markdown(f"### {combined_market.get('home_team', 'Home Team')}")
-                st.metric("Win Probability", combined_market.get("home_probability_pct", "0%"))
+            fig.add_trace(go.Scatter(
+                x=timestamps,
+                y=closes,
+                mode='lines',
+                name='Close Price',
+                line=dict(color='#1f77b4', width=2),
+                hovertemplate='<b>Time:</b> %{x}<br><b>Price:</b> $%{y:.2f}<extra></extra>'
+            ))
             
-            col3, col4 = st.columns(2)
-            with col3:
-                st.metric("Volume", f"${combined_market.get('display_volume', 0):,.0f}")
-            with col4:
-                away_contract = combined_market.get("away_contract", {})
-                home_contract = combined_market.get("home_contract", {})
-                total_oi = away_contract.get("open_interest", 0) + home_contract.get("open_interest", 0)
-                st.metric("Open Interest", f"{total_oi:,}")
-            
-            st.markdown("---")
-            
-            team_choice = st.radio(
-                "Select team to view details:",
-                [combined_market.get('away_team', 'Away'), combined_market.get('home_team', 'Home')],
-                horizontal=True
+            fig.update_layout(
+                title="Price Over Time (Hourly)",
+                xaxis_title="Time",
+                yaxis_title="Price (Probability)",
+                yaxis=dict(tickformat='.0%', range=[0, 1]),
+                hovermode='x unified',
+                height=400
             )
             
-            if team_choice == combined_market.get('away_team'):
-                selected_contract = combined_market.get("away_contract", {})
-                ticker = combined_market.get("away_ticker", "")
-            else:
-                selected_contract = combined_market.get("home_contract", {})
-                ticker = combined_market.get("home_ticker", "")
+            st.plotly_chart(fig, use_container_width=True)
             
-            show_contract_details(kalshi, openai_service, ticker, selected_contract, combined_market)
-            return
-    
-    ticker = st.session_state.get('selected_ticker')
-    if not ticker:
-        st.error("No market selected")
-        return
-    
-    st.title(f"📊 Market Details: {ticker}")
-    
-    market = None
-    with st.spinner("Loading market details..."):
-        market = kalshi.get_market_details(ticker)
-    
-    if not market:
-        st.error("Unable to load market details. Please try again.")
-        return
-    
-    normalized_market = kalshi.normalize_market(market)
-    
-    st.header(normalized_market.get("display_name", "Unknown Market"))
-    category = normalized_market.get("category", "")
-    matchup = normalized_market.get("matchup", "")
-    if category or matchup:
-        st.subheader(f"{category} - {matchup}" if matchup != "General" else category)
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        yes_bid = market.get("yes_bid", 0)
-        st.metric("Yes Probability", f"{yes_bid}%", help="Current yes bid price in cents")
-    
-    with col2:
-        no_bid = market.get("no_bid", 0)
-        st.metric("No Probability", f"{no_bid}%", help="Current no bid price in cents")
-    
-    with col3:
-        volume = normalized_market.get("display_volume", 0)
-        st.metric("Volume", f"${volume:,.0f}", help="Total trading volume")
-    
-    with col4:
-        open_interest = market.get("open_interest", 0)
-        st.metric("Open Interest", f"{open_interest:,}", help="Outstanding contracts")
-    
-    show_contract_tabs(kalshi, openai_service, ticker, market)
-
-def show_contract_details(kalshi, openai_service, ticker, contract, combined_market):
-    """Show tabs for contract details."""
-    show_contract_tabs(kalshi, openai_service, ticker, contract)
-
-def show_contract_tabs(kalshi, openai_service, ticker, market):
-    """Display tabs with contract details."""
-    st.markdown("---")
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["📈 Price History", "📖 Order Book", "🤖 AI Market Brief", "ℹ️ Market Info"])
-    
-    with tab1:
-        st.subheader("Price History")
-        history = kalshi.get_market_history(ticker, limit=100)
-        
-        if history:
-            df = pd.DataFrame(history)
-            
-            if 'ts' in df.columns and 'price' in df.columns:
-                df['timestamp'] = pd.to_datetime(df['ts'], unit='s')
-                df = df.sort_values('timestamp')
-                
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=df['timestamp'],
-                    y=df['price'],
-                    mode='lines+markers',
-                    name='Price',
-                    line=dict(color='#1f77b4', width=2),
-                    marker=dict(size=4)
+            # Volume chart
+            if max(volumes) > 0:
+                fig_vol = go.Figure()
+                fig_vol.add_trace(go.Bar(
+                    x=timestamps,
+                    y=volumes,
+                    name='Volume',
+                    marker_color='lightblue',
+                    hovertemplate='<b>Time:</b> %{x}<br><b>Volume:</b> %{y}<extra></extra>'
                 ))
                 
-                fig.update_layout(
-                    title="Market Price Over Time",
+                fig_vol.update_layout(
+                    title="Trading Volume Over Time",
                     xaxis_title="Time",
-                    yaxis_title="Price (¢)",
-                    hovermode='x unified',
-                    height=400
+                    yaxis_title="Volume",
+                    height=300
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Historical price data structure not available")
+                with st.expander("📊 View Volume History"):
+                    st.caption("**Volume spikes** can indicate important news or events affecting trader sentiment.")
+                    st.plotly_chart(fig_vol, use_container_width=True)
         else:
-            st.info("No historical data available for this market")
+            st.info("Historical price data not yet available for this market. Check back after some trading activity.")
     
-    with tab2:
-        st.subheader("Order Book")
-        orderbook = kalshi.get_orderbook(ticker, depth=10)
+    # Order Book
+    st.divider()
+    st.subheader("📖 Current Order Book")
+    
+    if ticker:
+        st.info(
+            "**Understanding the order book:** "
+            "The order book shows all pending buy and sell orders. "
+            "'Yes' orders are from traders betting the outcome will happen. "
+            "'No' orders are from traders betting it won't. "
+            "The spread between best bid and ask indicates market liquidity."
+        )
+        
+        orderbook = kalshi.get_market_orderbook(ticker)
         
         if orderbook:
-            col1, col2 = st.columns(2)
+            col_yes, col_no = st.columns(2)
             
-            with col1:
-                st.markdown("### 👍 Yes Orders")
+            with col_yes:
+                st.markdown("**YES Orders (Betting it happens)**")
                 yes_orders = orderbook.get("yes", [])
                 if yes_orders:
-                    yes_df = pd.DataFrame(yes_orders)
-                    st.dataframe(yes_df, use_container_width=True)
+                    yes_df = pd.DataFrame(yes_orders[:10])  # Top 10
+                    if not yes_df.empty and "price" in yes_df.columns and "size" in yes_df.columns:
+                        yes_display = yes_df[["price", "size"]].copy()
+                        yes_display.columns = ["Price", "Size"]
+                        st.dataframe(
+                            yes_display,
+                            hide_index=True,
+                            use_container_width=True
+                        )
                 else:
-                    st.info("No yes orders")
+                    st.caption("No YES orders currently available")
             
-            with col2:
-                st.markdown("### 👎 No Orders")
+            with col_no:
+                st.markdown("**NO Orders (Betting it doesn't happen)**")
                 no_orders = orderbook.get("no", [])
                 if no_orders:
-                    no_df = pd.DataFrame(no_orders)
-                    st.dataframe(no_df, use_container_width=True)
+                    no_df = pd.DataFrame(no_orders[:10])  # Top 10
+                    if not no_df.empty and "price" in no_df.columns and "size" in no_df.columns:
+                        no_display = no_df[["price", "size"]].copy()
+                        no_display.columns = ["Price", "Size"]
+                        st.dataframe(
+                            no_display,
+                            hide_index=True,
+                            use_container_width=True
+                        )
                 else:
-                    st.info("No no orders")
+                    st.caption("No NO orders currently available")
         else:
-            st.info("Order book data not available")
+            st.info("Order book data not available for this market.")
     
-    with tab3:
-        st.subheader("🤖 AI-Generated Market Brief")
-        
-        with st.spinner("Generating AI insights..."):
-            brief = openai_service.generate_market_brief(market)
-            st.markdown(brief)
-        
-        st.caption("Generated by AI - Use for informational purposes only")
+    st.divider()
+    st.subheader("📋 All Event Contracts (Detailed)")
+    st.caption("Complete list of all betting contracts available for this game, including player props and other markets.")
     
-    with tab4:
-        st.subheader("Market Information")
-        
-        info_col1, info_col2 = st.columns(2)
-        
-        with info_col1:
-            st.markdown(f"**Ticker:** {market.get('ticker', 'N/A')}")
-            st.markdown(f"**Event:** {market.get('event_ticker', 'N/A')}")
-            st.markdown(f"**Status:** {market.get('status', 'N/A')}")
-            st.markdown(f"**Market Type:** {market.get('market_type', 'N/A')}")
-        
-        with info_col2:
-            close_time = market.get('close_time', 'N/A')
-            st.markdown(f"**Closes:** {close_time}")
-            st.markdown(f"**Result:** {market.get('result', 'Pending')}")
-            st.markdown(f"**Can Close Early:** {market.get('can_close_early', False)}")
-            st.markdown(f"**Expiration Time:** {market.get('expiration_time', 'N/A')}")
+    df = pd.DataFrame(ev["all_contracts"])
+    keep = [
+        c for c in [
+            "ticker", "title", "subtitle", "yes_bid", "yes_ask",
+            "open_interest", "volume_24h", "close_dt", "market_type"
+        ] if c in df.columns
+    ]
+    if "close_dt" in df.columns:
+        df_sorted = df.sort_values(by="close_dt",
+                                   ascending=True,
+                                   na_position="last",
+                                   ignore_index=True)
+    else:
+        df_sorted = df.copy()
+    st.dataframe(df_sorted[keep], use_container_width=True)
+
+    # ---------- Context generation ----------
+    st.divider()
+    st.subheader("Generate Game Context (ESPN + GPT via FastAPI)")
+    auto_game_id = find_game_id(ev["away_team"], ev["home_team"],
+                                ev["close_dt"])
+    with st.expander("Game mapping details"):
+        st.write({
+            "away_team": ev["away_team"],
+            "home_team": ev["home_team"],
+            "kalshi_close_dt": str(ev["close_dt"]),
+            "auto_resolved_game_id": auto_game_id,
+            "context_url": CONTEXT_URL,
+        })
+
+    game_id = st.text_input("ESPN game_id", value=auto_game_id or "")
+    colL, colR = st.columns([1, 5])
+    with colL:
+        run = st.button("Generate Context")
+
+    if run and game_id:
+        data = call_context(game_id, include_llm=True)
+        if data:
+            if data.get("llm", {}).get("summary_md"):
+                st.markdown("### Analyst Brief")
+                st.markdown(data["llm"]["summary_md"])
+            else:
+                st.info("LLM summary not available; showing facts only.")
+            st.markdown("### Facts (compact)")
+            st.json(data.get("facts", {}))
+
+    st.link_button("⬅️ Back to list", "?page=list")
+
 
 def main():
-    """Main application entry point."""
-    init_session_state()
-    
-    if st.session_state.page == 'list':
-        show_market_list()
-    elif st.session_state.page == 'detail':
-        show_market_detail()
+    init_state()
+    page = qp_get("page", "list")
+    if page == "detail":
+        page_detail()
+    else:
+        page_list()
+
 
 if __name__ == "__main__":
     main()
