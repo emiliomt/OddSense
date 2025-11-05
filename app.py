@@ -376,20 +376,21 @@ def page_detail():
     # Market Metrics Overview with explanations
     st.subheader("📊 Market Overview")
     
+    # Use single column on mobile for better stacking
     metric_cols = st.columns(3)
     
     with metric_cols[0]:
         st.metric(
-            "24h Trading Volume",
+            "24h Volume",
             f"${ev.get('volume_24h_sum', 0):,}",
-            help="Total dollar volume traded in the last 24 hours across all contracts for this game. Higher volume indicates more active trading and better liquidity."
+            help="Total dollar volume traded in the last 24 hours"
         )
     
     with metric_cols[1]:
         st.metric(
             "Open Interest",
-            f"{ev.get('open_interest_sum', 0):,} contracts",
-            help="Total number of outstanding contracts (positions that haven't been closed). This represents the total amount of money at risk in this market."
+            f"{ev.get('open_interest_sum', 0):,}",
+            help="Outstanding contracts (positions not yet closed)"
         )
     
     with metric_cols[2]:
@@ -397,19 +398,36 @@ def page_detail():
             hours_left = (close_dt - datetime.now(timezone.utc)).total_seconds() / 3600
             if hours_left > 0:
                 st.metric(
-                    "Time Remaining",
-                    f"{int(hours_left)} hours" if hours_left < 48 else f"{int(hours_left/24)} days",
-                    help="Time until this market closes and stops accepting trades. Markets typically close shortly before the event begins."
+                    "Time Left",
+                    f"{int(hours_left)}h" if hours_left < 48 else f"{int(hours_left/24)}d",
+                    help="Time until market closes"
                 )
             else:
-                st.metric("Status", "Closed", help="This market has closed and is no longer accepting trades.")
+                st.metric("Status", "Closed", help="Market has closed")
     
     st.divider()
     
-    # ONE display row
+    # Winner Market with Visual Indicators
     w = ev.get("winner_primary", {}) or {}
     label, bid_val = pick_display_label_and_bid(w)
-
+    
+    # Get odds quality for visual indicator
+    quality_label, quality_class, quality_desc = get_odds_quality(bid_val)
+    
+    # Display probability badge and quality indicator
+    if bid_val is not None:
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+            <div class="probability-badge {quality_class}">
+                {pct(bid_val)}
+            </div>
+            <div class="value-indicator {quality_class}">
+                {quality_label}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.caption(f"**{label}** - {quality_desc}")
+    
     st.subheader("🏆 Winner Market")
     st.info(
         "**How to read this market:** "
@@ -525,77 +543,77 @@ def page_detail():
         else:
             st.info("Historical price data not yet available for this market. Check back after some trading activity.")
     
-    # Order Book
+    # Order Book (Collapsed for mobile)
     st.divider()
-    st.subheader("📖 Current Order Book")
     
-    if ticker:
-        st.info(
-            "**Understanding the order book:** "
-            "The order book shows all pending buy and sell orders. "
-            "'Yes' orders are from traders betting the outcome will happen. "
-            "'No' orders are from traders betting it won't. "
-            "The spread between best bid and ask indicates market liquidity."
-        )
-        
-        orderbook = kalshi.get_market_orderbook(ticker)
-        
-        if orderbook:
-            col_yes, col_no = st.columns(2)
+    with st.expander("📖 Current Order Book", expanded=False):
+        if ticker:
+            st.info(
+                "The order book shows pending buy/sell orders. "
+                "'Yes' orders bet the outcome happens; 'No' orders bet it doesn't."
+            )
             
-            with col_yes:
-                st.markdown("**YES Orders (Betting it happens)**")
-                yes_orders = orderbook.get("yes", [])
-                if yes_orders:
-                    yes_df = pd.DataFrame(yes_orders[:10])  # Top 10
-                    if not yes_df.empty and "price" in yes_df.columns and "size" in yes_df.columns:
-                        yes_display = yes_df[["price", "size"]].copy()
-                        yes_display.columns = ["Price", "Size"]
-                        st.dataframe(
-                            yes_display,
-                            hide_index=True,
-                            use_container_width=True
-                        )
-                else:
-                    st.caption("No YES orders currently available")
+            orderbook = kalshi.get_market_orderbook(ticker)
             
-            with col_no:
-                st.markdown("**NO Orders (Betting it doesn't happen)**")
-                no_orders = orderbook.get("no", [])
-                if no_orders:
-                    no_df = pd.DataFrame(no_orders[:10])  # Top 10
-                    if not no_df.empty and "price" in no_df.columns and "size" in no_df.columns:
-                        no_display = no_df[["price", "size"]].copy()
-                        no_display.columns = ["Price", "Size"]
-                        st.dataframe(
-                            no_display,
-                            hide_index=True,
-                            use_container_width=True
-                        )
-                else:
-                    st.caption("No NO orders currently available")
+            if orderbook:
+                col_yes, col_no = st.columns(2)
+                
+                with col_yes:
+                    st.markdown("**YES Orders**")
+                    yes_orders = orderbook.get("yes", [])
+                    if yes_orders:
+                        yes_df = pd.DataFrame(yes_orders[:10])  # Top 10
+                        if not yes_df.empty and "price" in yes_df.columns and "size" in yes_df.columns:
+                            yes_display = yes_df[["price", "size"]].copy()
+                            yes_display.columns = ["Price", "Size"]
+                            st.dataframe(
+                                yes_display,
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                    else:
+                        st.caption("No YES orders")
+                
+                with col_no:
+                    st.markdown("**NO Orders**")
+                    no_orders = orderbook.get("no", [])
+                    if no_orders:
+                        no_df = pd.DataFrame(no_orders[:10])  # Top 10
+                        if not no_df.empty and "price" in no_df.columns and "size" in no_df.columns:
+                            no_display = no_df[["price", "size"]].copy()
+                            no_display.columns = ["Price", "Size"]
+                            st.dataframe(
+                                no_display,
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                    else:
+                        st.caption("No NO orders")
+            else:
+                st.info("Order book data not available.")
         else:
-            st.info("Order book data not available for this market.")
+            st.info("No ticker available for order book.")
     
     st.divider()
-    st.subheader("📋 All Event Contracts (Detailed)")
-    st.caption("Complete list of all betting contracts available for this game, including player props and other markets.")
     
-    df = pd.DataFrame(ev["all_contracts"])
-    keep = [
-        c for c in [
-            "ticker", "title", "subtitle", "yes_bid", "yes_ask",
-            "open_interest", "volume_24h", "close_dt", "market_type"
-        ] if c in df.columns
-    ]
-    if "close_dt" in df.columns:
-        df_sorted = df.sort_values(by="close_dt",
-                                   ascending=True,
-                                   na_position="last",
-                                   ignore_index=True)
-    else:
-        df_sorted = df.copy()
-    st.dataframe(df_sorted[keep], use_container_width=True)
+    with st.expander("📋 All Event Contracts", expanded=False):
+        st.caption("Complete list of all betting contracts for this game, including player props and other markets.")
+        
+        df = pd.DataFrame(ev["all_contracts"])
+        keep = [
+            c for c in [
+                "ticker", "title", "subtitle", "yes_bid", "yes_ask",
+                "open_interest", "volume_24h", "close_dt", "market_type"
+            ] if c in df.columns
+        ]
+        if "close_dt" in df.columns:
+            df_sorted = df.sort_values(by="close_dt",
+                                       ascending=True,
+                                       na_position="last",
+                                       ignore_index=True)
+        else:
+            df_sorted = df.copy()
+        st.dataframe(df_sorted[keep], use_container_width=True)
 
     # ---------- Context generation ----------
     st.divider()
