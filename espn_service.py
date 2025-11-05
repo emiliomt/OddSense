@@ -84,6 +84,109 @@ class ESPNService:
             logger.error(f"Error fetching game summary for {game_id}: {e}")
             return None
     
+    def get_game_odds(self, game_id: str) -> Optional[Dict]:
+        """
+        Fetch betting odds for a specific game.
+        
+        Args:
+            game_id: ESPN game ID (e.g., '401547402')
+        
+        Returns:
+            Dict with odds data including moneyline, spread, over/under
+        """
+        # ESPN odds are in the game summary under competitions[0].odds
+        summary = self.get_game_summary(game_id)
+        
+        if not summary or 'header' not in summary:
+            return None
+        
+        try:
+            # Extract odds from the summary
+            competitions = summary.get('header', {}).get('competitions', [])
+            if not competitions:
+                logger.warning(f"No competitions found for game {game_id}")
+                return None
+            
+            competition = competitions[0]
+            odds_list = competition.get('odds', [])
+            
+            if not odds_list:
+                logger.warning(f"No odds data found for game {game_id}")
+                return None
+            
+            # Get the first odds provider (usually consensus or a major book)
+            odds_data = odds_list[0] if odds_list else {}
+            
+            # Extract odds information
+            result = {
+                'provider': odds_data.get('provider', {}).get('name', 'Unknown'),
+                'details': odds_data.get('details', ''),
+                'over_under': odds_data.get('overUnder'),
+                'spread': odds_data.get('spread'),
+                'home_team_odds': {},
+                'away_team_odds': {}
+            }
+            
+            # Get home/away moneyline odds
+            competitors = competition.get('competitors', [])
+            for comp in competitors:
+                team_id = comp.get('id')
+                home_away = comp.get('homeAway', '')
+                
+                # Find odds for this team
+                for odd in odds_list:
+                    team_odds = None
+                    if 'homeTeamOdds' in odd and home_away == 'home':
+                        team_odds = odd.get('homeTeamOdds', {})
+                    elif 'awayTeamOdds' in odd and home_away == 'away':
+                        team_odds = odd.get('awayTeamOdds', {})
+                    
+                    if team_odds:
+                        odds_info = {
+                            'moneyline': team_odds.get('moneyLine'),
+                            'spread_odds': team_odds.get('spreadOdds'),
+                            'team_name': comp.get('team', {}).get('displayName', ''),
+                            'team_abbreviation': comp.get('team', {}).get('abbreviation', '')
+                        }
+                        
+                        # Convert moneyline to implied probability
+                        if odds_info['moneyline']:
+                            odds_info['implied_probability'] = self._moneyline_to_probability(odds_info['moneyline'])
+                        
+                        if home_away == 'home':
+                            result['home_team_odds'] = odds_info
+                        else:
+                            result['away_team_odds'] = odds_info
+                        break
+            
+            logger.info(f"Successfully fetched odds for game {game_id}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error parsing odds data for game {game_id}: {e}")
+            return None
+    
+    def _moneyline_to_probability(self, moneyline: int) -> float:
+        """
+        Convert American moneyline odds to implied probability.
+        
+        Args:
+            moneyline: American odds (e.g., -150, +200)
+        
+        Returns:
+            Implied probability as decimal (0-1)
+        
+        Examples:
+            -150 (favorite) -> 60% (0.60)
+            +200 (underdog) -> 33.3% (0.333)
+        """
+        if moneyline < 0:
+            # Favorite: probability = |moneyline| / (|moneyline| + 100)
+            return abs(moneyline) / (abs(moneyline) + 100)
+        else:
+            # Underdog: probability = 100 / (moneyline + 100)
+            return 100 / (moneyline + 100)
+    
     def find_game_by_teams_and_date(self, away_team: str, home_team: str, 
                                     game_date: datetime) -> Optional[Dict]:
         """
