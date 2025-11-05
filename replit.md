@@ -1,8 +1,8 @@
 # Overview
 
-This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi betting API and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, and AI-generated analysis. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
+This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi betting API, ESPN's public API for historical game data, and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, AI-generated analysis, and historical accuracy comparisons. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
 
-The business vision is to offer a user-friendly platform for exploring NFL prediction markets, enhancing accessibility and understanding for both casual fans and serious traders. By leveraging AI for insights and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
+The business vision is to offer a user-friendly platform for exploring NFL prediction markets, enhancing accessibility and understanding for both casual fans and serious traders. By leveraging AI for insights, comparing predictions to actual results, and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
 
 # User Preferences
 
@@ -17,7 +17,7 @@ The application utilizes **Streamlit** for its UI, offering a Python-native, rea
 - **Market Listing Page**: Displays markets hierarchically (Category → Matchup → Combined Markets) with a single row showing both teams and their probabilities. Features search, pagination, and mobile-first responsive design with custom CSS.
 - **Visual Odds Quality Indicators**: Color-coded system (Green, Blue, Orange) provides quick assessment of market signals on market cards.
 - **Redesigned Market Cards**: Clean white cards with a colored left border, large probability badge, and value indicator label (e.g., "Strong Favorite").
-- **Detail View**: Allows selection of a specific team's contract via radio buttons. Includes visual indicators, shortened metric labels (e.g., "24h Volume"), and initially collapsed sections for Order Book and All Event Contracts to optimize mobile viewing.
+- **Detail View**: Allows selection of a specific team's contract via radio buttons. Includes visual indicators, shortened metric labels (e.g., "24h Volume"), historical accuracy comparison with ESPN game results, and initially collapsed sections for Order Book and All Event Contracts to optimize mobile viewing.
 - **Session State Management**: Used for navigation between combined and single markets.
 
 ## Backend Architecture
@@ -25,6 +25,7 @@ The application utilizes **Streamlit** for its UI, offering a Python-native, rea
 The architecture follows a **service-oriented approach** to separate concerns:
 
 - `kalshi_service.py`: Manages all interactions with the Kalshi API, including data normalization.
+- `espn_service.py`: Fetches historical NFL game results from ESPN's public API for prediction accuracy comparison.
 - `openai_service.py`: Handles the generation of AI-powered market analyses.
 - `app.py`: Orchestrates the application logic and serves the presentation layer.
 
@@ -60,6 +61,18 @@ The application integrates with **OpenAI's GPT-5** for generating concise 3-4 se
 - **Authentication**: Uses unauthenticated public endpoints.
 - **Purpose**: Fetches Professional Football Game prediction markets (`series_ticker=KXNFLGAME`), detailed market information, historical price data, and order books.
 - **Filtering**: Specifically uses `series_ticker=KXNFLGAME` to retrieve only game outcome contracts.
+
+### ESPN Public API
+
+- **Endpoint**: `http://site.api.espn.com/apis/site/v2/sports/football/nfl`
+- **Authentication**: No authentication required (unofficial public API).
+- **Purpose**: Fetches historical NFL game results including final scores, winners, and game status to compare against Kalshi's implied odds.
+- **Features**:
+  - Scoreboard data by date or week
+  - Detailed game summaries and box scores
+  - Fuzzy team name matching to handle variations
+  - ±2 day search window for game date flexibility
+- **Note**: Unofficial API - structure may change without notice.
 
 ### OpenAI API
 
