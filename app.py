@@ -10,6 +10,7 @@ import streamlit as st
 from espn_lookup import find_game_id
 from kalshi_service import KalshiService
 from espn_service import espn
+from odds_api_service import OddsAPIService
 
 st.set_page_config(page_title="NFL Kalshi Markets",
                    page_icon="🏈",
@@ -447,136 +448,150 @@ def page_detail():
     r[1].write(pct(bid_val))
     r[2].code(w.get("ticker") or "")
 
-    # ESPN Odds vs Kalshi Odds Comparison
+    # Sportsbook Odds vs Kalshi Odds Comparison
     st.divider()
-    st.subheader("📊 ESPN Odds vs Kalshi Odds")
+    st.subheader("📊 Sportsbook Odds vs Kalshi Prediction Market")
     
-    # Try to fetch ESPN odds for comparison
-    if close_dt:
-        with st.spinner("Fetching ESPN betting odds..."):
-            away_team_name = ev.get("away_team", "")
-            home_team_name = ev.get("home_team", "")
-            
-            # Find the game on ESPN
-            game_result = espn.find_game_by_teams_and_date(
-                away_team=away_team_name,
-                home_team=home_team_name,
-                game_date=close_dt
+    # Initialize The Odds API service
+    odds_api = OddsAPIService()
+    
+    away_team_name = ev.get("away_team", "")
+    home_team_name = ev.get("home_team", "")
+    
+    # Try to fetch real-time betting odds from The Odds API
+    with st.spinner("Fetching live betting odds from sportsbooks..."):
+        game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
+        
+        if game_odds:
+            st.info(
+                "**Comparing prediction markets to sportsbooks:** "
+                "See how Kalshi's prediction market compares to traditional sportsbook odds. "
+                "Differences can reveal arbitrage opportunities or varying market confidence."
             )
             
-            if game_result and game_result.get('game_id'):
-                # Fetch ESPN odds
-                espn_odds = espn.get_game_odds(game_result['game_id'])
-                
-                if espn_odds:
-                    st.info(
-                        "**Comparing odds sources:** "
-                        "See how Kalshi's prediction market odds compare to traditional sportsbook odds from ESPN. "
-                        "Differences can reveal market inefficiencies or varying confidence levels."
-                    )
-                    
-                    # Display odds comparison table
-                    col_label, col_kalshi, col_espn = st.columns([3, 2, 2])
-                    
-                    with col_label:
-                        st.markdown("**Team**")
-                    with col_kalshi:
-                        st.markdown("**Kalshi Odds**")
-                    with col_espn:
-                        st.markdown(f"**ESPN ({espn_odds.get('provider', 'Sportsbook')})**")
-                    
-                    # Away team row (always show if we have away team name)
-                    col1, col2, col3 = st.columns([3, 2, 2])
-                    
-                    with col1:
-                        st.write(f"**{away_team_name}** (Away)")
-                    
-                    with col2:
-                        # Get Kalshi probability for away team
-                        kalshi_prob = None
-                        for contract in ev.get('all_contracts', []):
-                            title = contract.get('title', '').lower()
-                            # Check if this contract is for the away team
-                            if away_team_name.lower() in title:
-                                # Direct match - get yes_bid
-                                kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
-                                break
-                            elif home_team_name.lower() in title:
-                                # Opposite team - derive probability from complement
-                                home_prob = contract.get('yes_bid') or contract.get('last_price')
-                                if home_prob is not None:
-                                    kalshi_prob = 1 - home_prob
-                                    break
-                        
-                        if kalshi_prob is not None:
-                            st.metric("Win Probability", f"{kalshi_prob*100:.1f}%")
-                        else:
-                            st.write("—")
-                    
-                    with col3:
-                        if espn_odds.get('away_team_odds'):
-                            espn_away = espn_odds['away_team_odds']
-                            moneyline = espn_away.get('moneyline')
-                            implied_prob = espn_away.get('implied_probability')
-                            
-                            if implied_prob:
-                                st.metric("Win Probability", f"{implied_prob*100:.1f}%", 
-                                         help=f"Moneyline: {moneyline:+d}" if moneyline else None)
-                            else:
-                                st.write("—")
-                        else:
-                            st.write("—")
-                    
-                    # Home team row (always show if we have home team name)
-                    col1, col2, col3 = st.columns([3, 2, 2])
-                    
-                    with col1:
-                        st.write(f"**{home_team_name}** (Home)")
-                    
-                    with col2:
-                        # Get Kalshi probability for home team
-                        kalshi_prob = None
-                        for contract in ev.get('all_contracts', []):
-                            title = contract.get('title', '').lower()
-                            # Check if this contract is for the home team
-                            if home_team_name.lower() in title:
-                                # Direct match - get yes_bid
-                                kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
-                                break
-                            elif away_team_name.lower() in title:
-                                # Opposite team - derive probability from complement
-                                away_prob = contract.get('yes_bid') or contract.get('last_price')
-                                if away_prob is not None:
-                                    kalshi_prob = 1 - away_prob
-                                    break
-                        
-                        if kalshi_prob is not None:
-                            st.metric("Win Probability", f"{kalshi_prob*100:.1f}%")
-                        else:
-                            st.write("—")
-                    
-                    with col3:
-                        if espn_odds.get('home_team_odds'):
-                            espn_home = espn_odds['home_team_odds']
-                            moneyline = espn_home.get('moneyline')
-                            implied_prob = espn_home.get('implied_probability')
-                            
-                            if implied_prob:
-                                st.metric("Win Probability", f"{implied_prob*100:.1f}%",
-                                         help=f"Moneyline: {moneyline:+d}" if moneyline else None)
-                            else:
-                                st.write("—")
-                        else:
-                            st.write("—")
-                    
-                    # Calculate and show spread
-                    if espn_odds.get('spread'):
-                        st.caption(f"**Spread:** {espn_odds['spread']} | **Over/Under:** {espn_odds.get('over_under', 'N/A')}")
-                    
+            # Get all bookmaker odds
+            all_odds = odds_api.get_all_bookmaker_odds(game_odds, market='h2h')
+            consensus = odds_api.get_market_consensus(game_odds, market='h2h')
+            
+            # Get Kalshi probabilities for both teams
+            away_kalshi_prob = None
+            home_kalshi_prob = None
+            
+            for contract in ev.get('all_contracts', []):
+                title = contract.get('title', '').lower()
+                if away_team_name.lower() in title:
+                    away_kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+                elif home_team_name.lower() in title:
+                    home_kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+            
+            # Derive complement if only one found
+            if away_kalshi_prob is None and home_kalshi_prob is not None:
+                away_kalshi_prob = 1 - home_kalshi_prob
+            elif home_kalshi_prob is None and away_kalshi_prob is not None:
+                home_kalshi_prob = 1 - away_kalshi_prob
+            
+            # Display comparison table
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+            
+            with col1:
+                st.markdown("**Team**")
+            with col2:
+                st.markdown("**Kalshi**")
+            with col3:
+                st.markdown("**Sportsbook Avg**")
+            with col4:
+                st.markdown("**Best Odds**")
+            
+            # Away team row
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+            
+            with col1:
+                st.write(f"**{away_team_name}** (Away)")
+            
+            with col2:
+                if away_kalshi_prob is not None:
+                    st.metric("", f"{away_kalshi_prob*100:.1f}%")
                 else:
-                    st.info("ESPN betting odds not available for this game.")
-            else:
-                st.info("Unable to find ESPN data for odds comparison.")
+                    st.write("—")
+            
+            with col3:
+                if consensus and consensus.get('away_team'):
+                    avg_prob = consensus['away_team']['average_probability']
+                    num_books = consensus['away_team']['num_bookmakers']
+                    st.metric("", f"{avg_prob*100:.1f}%", 
+                             help=f"Average across {num_books} sportsbooks")
+                else:
+                    st.write("—")
+            
+            with col4:
+                best = odds_api.get_best_odds(game_odds, away_team_name, market='h2h')
+                if best:
+                    st.metric("", f"{best['odds']:+d}", 
+                             help=f"{best['bookmaker']}: {best['implied_probability']*100:.1f}%")
+                else:
+                    st.write("—")
+            
+            # Home team row
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+            
+            with col1:
+                st.write(f"**{home_team_name}** (Home)")
+            
+            with col2:
+                if home_kalshi_prob is not None:
+                    st.metric("", f"{home_kalshi_prob*100:.1f}%")
+                else:
+                    st.write("—")
+            
+            with col3:
+                if consensus and consensus.get('home_team'):
+                    avg_prob = consensus['home_team']['average_probability']
+                    num_books = consensus['home_team']['num_bookmakers']
+                    st.metric("", f"{avg_prob*100:.1f}%",
+                             help=f"Average across {num_books} sportsbooks")
+                else:
+                    st.write("—")
+            
+            with col4:
+                best = odds_api.get_best_odds(game_odds, home_team_name, market='h2h')
+                if best:
+                    st.metric("", f"{best['odds']:+d}",
+                             help=f"{best['bookmaker']}: {best['implied_probability']*100:.1f}%")
+                else:
+                    st.write("—")
+            
+            # Show available sportsbooks in an expander
+            if all_odds['away_team'] or all_odds['home_team']:
+                with st.expander("📋 View All Sportsbook Odds"):
+                    st.caption("**All available odds for this game:**")
+                    
+                    # Create a dataframe for better display
+                    odds_data = []
+                    
+                    # Process away team odds
+                    for odd in all_odds['away_team']:
+                        odds_data.append({
+                            'Team': f"{away_team_name} (Away)",
+                            'Sportsbook': odd['bookmaker'],
+                            'Odds': f"{odd['odds']:+d}",
+                            'Win Prob': f"{odd['implied_probability']*100:.1f}%"
+                        })
+                    
+                    # Process home team odds
+                    for odd in all_odds['home_team']:
+                        odds_data.append({
+                            'Team': f"{home_team_name} (Home)",
+                            'Sportsbook': odd['bookmaker'],
+                            'Odds': f"{odd['odds']:+d}",
+                            'Win Prob': f"{odd['implied_probability']*100:.1f}%"
+                        })
+                    
+                    if odds_data:
+                        df = pd.DataFrame(odds_data)
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                    
+        else:
+            st.info("Live sportsbook odds not currently available for this game. Check back closer to game time!")
     
     # Historical Accuracy Comparison with ESPN Data
     st.divider()
