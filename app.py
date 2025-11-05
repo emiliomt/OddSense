@@ -12,9 +12,129 @@ from kalshi_service import KalshiService
 
 st.set_page_config(page_title="NFL Kalshi Markets",
                    page_icon="🏈",
-                   layout="wide")
+                   layout="wide",
+                   initial_sidebar_state="collapsed")
 
 CONTEXT_URL = os.getenv("CONTEXT_URL", "http://localhost:8000")
+
+# Mobile-optimized CSS
+st.markdown("""
+<style>
+    /* Mobile-first responsive design */
+    @media (max-width: 768px) {
+        .stApp {
+            padding: 0.5rem;
+        }
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        h2 {
+            font-size: 1.2rem !important;
+        }
+        .element-container {
+            margin-bottom: 0.5rem;
+        }
+    }
+    
+    /* Odds quality indicators */
+    .odds-excellent {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+    }
+    
+    .odds-good {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+    }
+    
+    .odds-neutral {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3);
+    }
+    
+    .odds-poor {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+    }
+    
+    /* Clean market cards */
+    .market-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 4px solid #3b82f6;
+    }
+    
+    .market-card-excellent {
+        border-left-color: #10b981;
+    }
+    
+    .market-card-good {
+        border-left-color: #3b82f6;
+    }
+    
+    .market-card-neutral {
+        border-left-color: #f59e0b;
+    }
+    
+    .market-card-poor {
+        border-left-color: #ef4444;
+    }
+    
+    /* Probability badge */
+    .prob-badge {
+        display: inline-block;
+        font-size: 1.5rem;
+        font-weight: 700;
+        padding: 0.25rem 0.75rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+    }
+    
+    /* Value indicator */
+    .value-indicator {
+        font-size: 0.875rem;
+        font-weight: 600;
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        display: inline-block;
+        margin-top: 0.25rem;
+    }
+    
+    .value-strong {
+        background: #d1fae5;
+        color: #065f46;
+    }
+    
+    .value-moderate {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+    
+    .value-weak {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -44,6 +164,34 @@ def init_state():
 
 def pct(x: Optional[float]) -> str:
     return f"{x*100:.0f}%" if isinstance(x, (int, float)) else "—"
+
+
+def get_odds_quality(prob: Optional[float]) -> tuple[str, str, str]:
+    """
+    Determine odds quality and return (category, css_class, description).
+    
+    Logic:
+    - Strong favorite (>75%): Excellent - clear market confidence
+    - Slight favorite (60-75%): Good - moderate confidence
+    - Toss-up (40-60%): Neutral - market is uncertain
+    - Slight underdog (25-40%): Good - upset potential with value
+    - Long shot (<25%): Excellent - high risk but potential high reward
+    """
+    if prob is None:
+        return ("Unknown", "odds-neutral", "No data")
+    
+    pct_val = prob * 100
+    
+    if pct_val >= 75:
+        return ("Strong Favorite", "odds-excellent", f"Heavy favorite at {pct_val:.0f}%")
+    elif pct_val >= 60:
+        return ("Favorite", "odds-good", f"Favored to win at {pct_val:.0f}%")
+    elif pct_val >= 40:
+        return ("Toss-Up", "odds-neutral", f"Close race at {pct_val:.0f}%")
+    elif pct_val >= 25:
+        return ("Underdog", "odds-good", f"Underdog with value at {pct_val:.0f}%")
+    else:
+        return ("Long Shot", "odds-excellent", f"Upset potential at {pct_val:.0f}%")
 
 
 def call_context(game_id: str, include_llm: bool = True) -> Optional[dict]:
@@ -87,7 +235,7 @@ def pick_display_label_and_bid(w: dict) -> tuple[str, Optional[float]]:
 
 
 def page_list():
-    st.title("🏈 NFL Kalshi Markets — Games")
+    st.title("🏈 NFL Kalshi Markets")
 
     with st.sidebar:
         st.subheader("Filters")
@@ -128,46 +276,66 @@ def page_list():
     p = max(1, min(int(st.session_state.p), pages))
     start, end = (p - 1) * per, min(p * per, total)
 
-    st.caption(f"Showing {start+1}-{end} of {total} events · Page {p}/{pages}")
+    st.caption(f"📊 {total} games • Page {p}/{pages}")
 
-    # Cards (ONE ROW per game with ONE bid %)
+    # Mobile-optimized market cards
     for ev in events[start:end]:
-        with st.container(border=True):
-            header = ev.get(
-                "pretty_event") or f"{ev['away_team']} at {ev['home_team']}"
-            st.markdown(f"**{header}**")
-            st.caption(
-                f"Closes: {ev['close_dt'] or 'N/A'} · 24h Vol (sum): **{ev['volume_24h_sum']:,}** · "
-                f"OI (sum): **{ev['open_interest_sum']:,}**")
-
-            cols = st.columns([5, 2, 2])
-            cols[0].markdown("**Market**")
-            cols[1].markdown("**Bid (%)**")
-            cols[2].markdown("**Action**")
-
-            w = ev.get("winner_primary", {}) or {}
-            label, bid_val = pick_display_label_and_bid(w)
-
-            row = st.columns([5, 2, 2])
-            row[0].write(label)
-            row[1].write(pct(bid_val))
-            row[2].link_button("See details",
-                               f"?page=detail&event={ev['event_ticker']}")
+        w = ev.get("winner_primary", {}) or {}
+        label, bid_val = pick_display_label_and_bid(w)
+        
+        # Get odds quality
+        quality_label, quality_class, quality_desc = get_odds_quality(bid_val)
+        
+        # Determine card border color
+        card_class = quality_class.replace("odds-", "market-card-")
+        
+        # Create custom HTML card for better mobile UX
+        matchup = ev.get("pretty_event") or f"{ev['away_team']} @ {ev['home_team']}"
+        prob_pct = f"{bid_val*100:.0f}%" if bid_val else "—"
+        
+        st.markdown(f"""
+        <div class="market-card {card_class}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                <div style="flex: 1;">
+                    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">
+                        {matchup}
+                    </div>
+                    <div style="font-size: 0.85rem; color: #6b7280;">
+                        {label}
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="prob-badge {quality_class}">
+                        {prob_pct}
+                    </div>
+                    <div class="value-indicator value-{'strong' if 'excellent' in quality_class or (bid_val and (bid_val >= 0.75 or bid_val <= 0.25)) else 'moderate' if 'good' in quality_class else 'weak'}">
+                        {quality_label}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Action button
+        st.link_button("📊 View Details", f"?page=detail&event={ev['event_ticker']}", use_container_width=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
     # Pager
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c1:
-        if p > 1 and st.button("⬅️ Prev"):
-            st.session_state.p = p - 1
-            qp_set(page="list")
-            st.rerun()
-    with c2:
-        st.write(f"Page {p}/{pages}")
-    with c3:
-        if p < pages and st.button("Next ➡️"):
-            st.session_state.p = p + 1
-            qp_set(page="list")
-            st.rerun()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if p > 1:
+            if st.button("⬅️ Previous", use_container_width=True):
+                st.session_state.p = p - 1
+                qp_set(page="list")
+                st.rerun()
+    with col2:
+        st.markdown(f"<div style='text-align: center; padding: 0.5rem;'>Page {p} of {pages}</div>", unsafe_allow_html=True)
+    with col3:
+        if p < pages:
+            if st.button("Next ➡️", use_container_width=True):
+                st.session_state.p = p + 1
+                qp_set(page="list")
+                st.rerun()
 
 
 def page_detail():
