@@ -485,36 +485,36 @@ def page_detail():
                     with col_espn:
                         st.markdown(f"**ESPN ({espn_odds.get('provider', 'Sportsbook')})**")
                     
-                    # Away team row
-                    if espn_odds.get('away_team_odds'):
-                        col1, col2, col3 = st.columns([3, 2, 2])
-                        
-                        with col1:
-                            st.write(f"**{away_team_name}** (Away)")
-                        
-                        with col2:
-                            # Get Kalshi probability for away team
-                            kalshi_prob = None
-                            for contract in ev.get('all_contracts', []):
-                                title = contract.get('title', '').lower()
-                                # Check if this contract is for the away team
-                                if away_team_name.lower() in title:
-                                    # Direct match - get yes_bid
-                                    kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+                    # Away team row (always show if we have away team name)
+                    col1, col2, col3 = st.columns([3, 2, 2])
+                    
+                    with col1:
+                        st.write(f"**{away_team_name}** (Away)")
+                    
+                    with col2:
+                        # Get Kalshi probability for away team
+                        kalshi_prob = None
+                        for contract in ev.get('all_contracts', []):
+                            title = contract.get('title', '').lower()
+                            # Check if this contract is for the away team
+                            if away_team_name.lower() in title:
+                                # Direct match - get yes_bid
+                                kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+                                break
+                            elif home_team_name.lower() in title:
+                                # Opposite team - derive probability from complement
+                                home_prob = contract.get('yes_bid') or contract.get('last_price')
+                                if home_prob is not None:
+                                    kalshi_prob = 1 - home_prob
                                     break
-                                elif home_team_name.lower() in title:
-                                    # Opposite team - derive probability from complement
-                                    home_prob = contract.get('yes_bid') or contract.get('last_price')
-                                    if home_prob is not None:
-                                        kalshi_prob = 1 - home_prob
-                                        break
-                            
-                            if kalshi_prob is not None:
-                                st.metric("Win Probability", f"{kalshi_prob*100:.1f}%")
-                            else:
-                                st.write("—")
                         
-                        with col3:
+                        if kalshi_prob is not None:
+                            st.metric("Win Probability", f"{kalshi_prob*100:.1f}%")
+                        else:
+                            st.write("—")
+                    
+                    with col3:
+                        if espn_odds.get('away_team_odds'):
                             espn_away = espn_odds['away_team_odds']
                             moneyline = espn_away.get('moneyline')
                             implied_prob = espn_away.get('implied_probability')
@@ -524,37 +524,39 @@ def page_detail():
                                          help=f"Moneyline: {moneyline:+d}" if moneyline else None)
                             else:
                                 st.write("—")
+                        else:
+                            st.write("—")
                     
-                    # Home team row
-                    if espn_odds.get('home_team_odds'):
-                        col1, col2, col3 = st.columns([3, 2, 2])
-                        
-                        with col1:
-                            st.write(f"**{home_team_name}** (Home)")
-                        
-                        with col2:
-                            # Get Kalshi probability for home team
-                            kalshi_prob = None
-                            for contract in ev.get('all_contracts', []):
-                                title = contract.get('title', '').lower()
-                                # Check if this contract is for the home team
-                                if home_team_name.lower() in title:
-                                    # Direct match - get yes_bid
-                                    kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+                    # Home team row (always show if we have home team name)
+                    col1, col2, col3 = st.columns([3, 2, 2])
+                    
+                    with col1:
+                        st.write(f"**{home_team_name}** (Home)")
+                    
+                    with col2:
+                        # Get Kalshi probability for home team
+                        kalshi_prob = None
+                        for contract in ev.get('all_contracts', []):
+                            title = contract.get('title', '').lower()
+                            # Check if this contract is for the home team
+                            if home_team_name.lower() in title:
+                                # Direct match - get yes_bid
+                                kalshi_prob = contract.get('yes_bid') or contract.get('last_price')
+                                break
+                            elif away_team_name.lower() in title:
+                                # Opposite team - derive probability from complement
+                                away_prob = contract.get('yes_bid') or contract.get('last_price')
+                                if away_prob is not None:
+                                    kalshi_prob = 1 - away_prob
                                     break
-                                elif away_team_name.lower() in title:
-                                    # Opposite team - derive probability from complement
-                                    away_prob = contract.get('yes_bid') or contract.get('last_price')
-                                    if away_prob is not None:
-                                        kalshi_prob = 1 - away_prob
-                                        break
-                            
-                            if kalshi_prob is not None:
-                                st.metric("Win Probability", f"{kalshi_prob*100:.1f}%")
-                            else:
-                                st.write("—")
                         
-                        with col3:
+                        if kalshi_prob is not None:
+                            st.metric("Win Probability", f"{kalshi_prob*100:.1f}%")
+                        else:
+                            st.write("—")
+                    
+                    with col3:
+                        if espn_odds.get('home_team_odds'):
                             espn_home = espn_odds['home_team_odds']
                             moneyline = espn_home.get('moneyline')
                             implied_prob = espn_home.get('implied_probability')
@@ -564,6 +566,8 @@ def page_detail():
                                          help=f"Moneyline: {moneyline:+d}" if moneyline else None)
                             else:
                                 st.write("—")
+                        else:
+                            st.write("—")
                     
                     # Calculate and show spread
                     if espn_odds.get('spread'):
