@@ -9,6 +9,7 @@ import streamlit as st
 
 from espn_lookup import find_game_id
 from kalshi_service import KalshiService
+from espn_service import espn
 
 st.set_page_config(page_title="NFL Kalshi Markets",
                    page_icon="🏈",
@@ -445,6 +446,124 @@ def page_detail():
     r[0].write(label)
     r[1].write(pct(bid_val))
     r[2].code(w.get("ticker") or "")
+
+    # Historical Accuracy Comparison with ESPN Data
+    st.divider()
+    st.subheader("🎯 Market Prediction vs Actual Result")
+    
+    # Check if game has finished by looking at close_dt
+    game_finished = False
+    if close_dt:
+        now = datetime.now(timezone.utc)
+        game_finished = now > close_dt
+    
+    if game_finished and bid_val is not None:
+        st.info(
+            "**Compare predictions to reality:** "
+            "See how accurate the Kalshi market was by comparing the implied probability to the actual game result from ESPN."
+        )
+        
+        # Try to fetch ESPN game result
+        with st.spinner("Fetching game result from ESPN..."):
+            away_team_name = ev.get("away_team", "")
+            home_team_name = ev.get("home_team", "")
+            
+            # Determine which team this market is for
+            # The label contains team name and either "— Yes" or "— No"
+            labeled_team = None
+            is_yes_contract = "— Yes" in label
+            is_no_contract = "— No" in label
+            
+            if away_team_name.lower() in label.lower():
+                labeled_team = "away"
+            elif home_team_name.lower() in label.lower():
+                labeled_team = "home"
+            
+            if labeled_team and close_dt:
+                game_result = espn.find_game_by_teams_and_date(
+                    away_team=away_team_name,
+                    home_team=home_team_name,
+                    game_date=close_dt
+                )
+                
+                if game_result:
+                    # For No contracts, the bet is on the OPPONENT of the labeled team
+                    # For Yes contracts, the bet is on the labeled team
+                    if is_no_contract:
+                        # No contract: betting the labeled team will LOSE
+                        # So we're effectively betting on the opponent
+                        bet_on_team = "home" if labeled_team == "away" else "away"
+                        # The probability remains as-is (it's the chance the labeled team loses)
+                        comparison = espn.compare_to_kalshi_odds(
+                            game_result=game_result,
+                            kalshi_probability=bid_val,
+                            bet_on_team=bet_on_team
+                        )
+                        comparison['contract_type'] = 'No'
+                        comparison['labeled_team'] = labeled_team
+                        # Calculate implied win probability for labeled team
+                        comparison['implied_win_probability'] = 1 - bid_val
+                    else:
+                        # Yes contract: betting the labeled team will WIN
+                        bet_on_team = labeled_team
+                        comparison = espn.compare_to_kalshi_odds(
+                            game_result=game_result,
+                            kalshi_probability=bid_val,
+                            bet_on_team=bet_on_team
+                        )
+                        comparison['contract_type'] = 'Yes'
+                    
+                    if comparison.get('status') == 'incomplete':
+                        st.warning(comparison.get('message'))
+                    else:
+                        # Display comparison results
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Show appropriate metric based on contract type
+                            if comparison.get('contract_type') == 'No':
+                                # For No contracts, we're showing the opponent's win chance
+                                # Label shows team X with No contract at Y%
+                                # This means market gives opponent (100-Y)% chance to win
+                                labeled_team_name = away_team_name if comparison.get('labeled_team') == 'away' else home_team_name
+                                opponent_name = comparison.get('team_name')
+                                implied_labeled_team_win = comparison.get('implied_win_probability', 0)
+                                
+                                st.metric(
+                                    "Kalshi Prediction",
+                                    comparison.get('kalshi_percentage'),
+                                    help=f"No contract on {labeled_team_name} at {pct(bid_val)} implies {opponent_name} has {comparison.get('kalshi_percentage')} chance to win"
+                                )
+                            else:
+                                st.metric(
+                                    "Kalshi Prediction",
+                                    comparison.get('kalshi_percentage'),
+                                    help=f"Market was {comparison.get('confidence_level')} that {comparison.get('team_name')} would win"
+                                )
+                        
+                        with col2:
+                            result_emoji = "✅" if comparison.get('bet_won') else "❌"
+                            st.metric(
+                                "Actual Result",
+                                f"{result_emoji} {'Won' if comparison.get('bet_won') else 'Lost'}",
+                                help=f"Final score: {comparison.get('final_score', {}).get('away')} - {comparison.get('final_score', {}).get('home')}"
+                            )
+                        
+                        # Show analysis message
+                        message = comparison.get('message', '')
+                        if comparison.get('bet_won'):
+                            st.success(message)
+                        else:
+                            if comparison.get('kalshi_probability', 0) >= 0.6:
+                                st.error(message)
+                            else:
+                                st.info(message)
+                else:
+                    st.warning(f"Could not find ESPN game data for {away_team_name} @ {home_team_name}")
+            else:
+                st.info("Unable to determine which team this market is for.")
+    else:
+        st.info("Historical comparison will be available after the game finishes.")
 
     # Historical Price Chart
     st.divider()
