@@ -656,7 +656,7 @@ def page_detail():
             all_odds = odds_api.get_all_bookmaker_odds(game_odds, market='h2h')
             consensus = odds_api.get_market_consensus(game_odds, market='h2h')
             
-            # Get Kalshi probabilities for both teams
+            # Get prediction market probabilities for both teams
             away_kalshi_prob = None
             home_kalshi_prob = None
             
