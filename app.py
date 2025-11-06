@@ -362,34 +362,22 @@ def page_list():
                 # Silently fail - odds might not be available yet
                 pass
         
-        st.markdown(f"""
-        <div class="market-card {card_class}">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                <div style="flex: 1;">
-                    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">
-                        {matchup}
-                    </div>
-                    <div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem;">
-                        {label}
-                    </div>
-                    <div class="market-metrics">
-                        <span title="24-hour trading volume">📊 {volume_str}</span>
-                        <span title="Open interest (total contracts)">📈 {oi_str}</span>
-                        {f'<span title="Time until market closes">⏱️ {time_left_str}</span>' if time_left_str else ''}
-                        {f'<span title="Sportsbook consensus average">🎲 {sportsbook_str}</span>' if sportsbook_str else ''}
-                    </div>
-                </div>
-                <div style="text-align: right;">
-                    <div class="prob-badge {quality_class}">
-                        {prob_pct}
-                    </div>
-                    <div class="value-indicator value-{'strong' if 'excellent' in quality_class or (bid_val and (bid_val >= 0.75 or bid_val <= 0.25)) else 'moderate' if 'good' in quality_class else 'weak'}">
-                        {quality_label}
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Determine value class
+        if 'excellent' in quality_class or (bid_val and (bid_val >= 0.75 or bid_val <= 0.25)):
+            value_class = 'strong'
+        elif 'good' in quality_class:
+            value_class = 'moderate'
+        else:
+            value_class = 'weak'
+        
+        # Build metrics HTML
+        time_metric = f'<span title="Time until market closes">⏱️ {time_left_str}</span>' if time_left_str else ''
+        sportsbook_metric = f'<span title="Sportsbook consensus average">🎲 {sportsbook_str}</span>' if sportsbook_str else ''
+        
+        # Build card HTML as a single line to avoid Streamlit parsing issues
+        card_html = f'<div class="market-card {card_class}"><div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;"><div style="flex: 1;"><div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">{matchup}</div><div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem;">{label}</div><div class="market-metrics"><span title="24-hour trading volume">📊 {volume_str}</span><span title="Open interest (total contracts)">📈 {oi_str}</span>{time_metric}{sportsbook_metric}</div></div><div style="text-align: right;"><div class="prob-badge {quality_class}">{prob_pct}</div><div class="value-indicator value-{value_class}">{quality_label}</div></div></div></div>'
+        
+        st.markdown(card_html, unsafe_allow_html=True)
         
         # Action button
         st.link_button("📊 View Details", f"?page=detail&event={ev['event_ticker']}", use_container_width=True)

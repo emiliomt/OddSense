@@ -4,6 +4,12 @@ This project is an NFL prediction markets explorer built with Streamlit, integra
 
 The business vision is to offer a user-friendly platform for exploring NFL prediction markets, enhancing accessibility and understanding for both casual fans and serious traders. By leveraging AI for insights, comparing predictions to actual results, and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
 
+# Recent Changes
+
+**November 6, 2025**
+- Fixed critical HTML rendering bug where market card probability badges and quality labels were displaying as raw HTML code blocks instead of rendering properly. Resolved by converting multi-line f-string HTML template to single-line format to avoid Streamlit parsing issues with whitespace.
+- Note: The Odds API key (`ODDS_API_KEY` environment variable) appears to be invalid or expired, resulting in 401 Unauthorized errors. Sportsbook consensus feature will not display until a valid API key is configured.
+
 # User Preferences
 
 Preferred communication style: Simple, everyday language.
