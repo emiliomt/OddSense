@@ -11,6 +11,7 @@ from espn_lookup import find_game_id
 from kalshi_service import KalshiService
 from espn_service import espn
 from odds_api_service import OddsAPIService
+from gemini_service import GeminiService
 
 st.set_page_config(page_title="NFL Kalshi Markets",
                    page_icon="🏈",
@@ -478,6 +479,53 @@ def page_detail():
                 )
             else:
                 st.metric("Status", "Closed", help="Market has closed")
+    
+    st.divider()
+    
+    # AI-Generated Game Preview
+    st.subheader("🤖 AI Game Preview")
+    with st.spinner("Generating AI-powered game analysis..."):
+        gemini = GeminiService()
+        away_team_name = ev.get("away_team", "")
+        home_team_name = ev.get("home_team", "")
+        
+        # Get primary contract probability
+        w_temp = ev.get("winner_primary", {}) or {}
+        _, primary_prob = pick_display_label_and_bid(w_temp)
+        
+        # Try to get sportsbook odds for context
+        sportsbook_prob = None
+        try:
+            odds_api = OddsAPIService()
+            game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
+            if game_odds:
+                consensus = odds_api.get_market_consensus(game_odds, market='h2h')
+                if consensus:
+                    subject_team = w_temp.get('subject_team', '')
+                    if subject_team == away_team_name and consensus.get('away_team'):
+                        sportsbook_prob = consensus['away_team']['average_probability']
+                    elif subject_team == home_team_name and consensus.get('home_team'):
+                        sportsbook_prob = consensus['home_team']['average_probability']
+        except Exception:
+            pass
+        
+        # Generate game date string
+        game_date = None
+        if close_dt:
+            game_date = close_dt.strftime('%B %d, %Y')
+        
+        summary = gemini.generate_game_summary(
+            away_team=away_team_name,
+            home_team=home_team_name,
+            kalshi_prob=primary_prob,
+            sportsbook_prob=sportsbook_prob,
+            game_date=game_date
+        )
+        
+        if summary:
+            st.info(summary)
+        else:
+            st.warning("AI game preview unavailable. Check back soon!")
     
     st.divider()
     

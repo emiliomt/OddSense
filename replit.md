@@ -1,6 +1,6 @@
 # Overview
 
-This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi prediction market API, The Odds API for real-time sportsbook betting odds, ESPN's public API for historical game data, and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, AI-generated analysis, multi-sportsbook odds comparison, and historical accuracy comparisons. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
+This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi prediction market API, The Odds API for real-time sportsbook betting odds, ESPN's public API for historical game data, Google Gemini AI for game previews with player insights, and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, AI-generated game analysis with player highlights, multi-sportsbook odds comparison, and historical accuracy comparisons. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
 
 The business vision is to offer a user-friendly platform for exploring NFL prediction markets, enhancing accessibility and understanding for both casual fans and serious traders. By leveraging AI for insights, comparing predictions to actual results, and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
 
@@ -17,7 +17,9 @@ The application utilizes **Streamlit** for its UI, offering a Python-native, rea
 - **Market Listing Page**: Displays markets hierarchically (Category → Matchup → Combined Markets) with a single row showing both teams and their probabilities. Features search, pagination, and mobile-first responsive design with custom CSS.
 - **Visual Odds Quality Indicators**: Color-coded system (Green, Blue, Orange) provides quick assessment of market signals on market cards.
 - **Redesigned Market Cards**: Clean white cards with a colored left border, large probability badge, and value indicator label (e.g., "Strong Favorite").
-- **Detail View**: Allows selection of a specific team's contract via radio buttons. Includes visual indicators, shortened metric labels (e.g., "24h Volume"), real-time sportsbook odds comparison showing Kalshi prediction market vs multiple sportsbooks (DraftKings, FanDuel, BetMGM, etc.) side-by-side with consensus averages and best available odds, historical accuracy comparison with ESPN game results, and initially collapsed sections for Order Book and All Event Contracts to optimize mobile viewing.
+- **Enhanced Market Cards**: Display 24h volume, open interest, time remaining, and sportsbook consensus odds directly on listing page for quick comparison.
+- **Detail View**: Features AI-generated game preview with player insights, visual indicators, shortened metric labels (e.g., "24h Volume"), real-time sportsbook odds comparison showing Kalshi prediction market vs multiple sportsbooks (DraftKings, FanDuel, BetMGM, etc.) side-by-side with consensus averages and best available odds, historical accuracy comparison with ESPN game results, and initially collapsed sections for Order Book and All Event Contracts to optimize mobile viewing.
+- **AI Game Preview**: Powered by Google Gemini 2.5 Flash, each detail page displays a 3-4 sentence analysis highlighting key players to watch, recent performance stats, and critical matchup factors.
 - **Session State Management**: Used for navigation between combined and single markets.
 
 ## Backend Architecture
@@ -27,6 +29,7 @@ The architecture follows a **service-oriented approach** to separate concerns:
 - `kalshi_service.py`: Manages all interactions with the Kalshi API, including data normalization.
 - `odds_api_service.py`: Fetches real-time betting odds from multiple sportsbooks via The Odds API. Includes American odds-to-probability conversion, consensus calculation across bookmakers, and best odds discovery.
 - `espn_service.py`: Fetches historical NFL game results from ESPN's public API for prediction accuracy comparison.
+- `gemini_service.py`: Generates AI-powered game previews with player insights using Google Gemini 2.5 Flash. Creates engaging 3-4 sentence summaries highlighting key players, recent stats, and tactical matchups.
 - `openai_service.py`: Handles the generation of AI-powered market analyses.
 - `app.py`: Orchestrates the application logic and serves the presentation layer.
 
@@ -50,7 +53,26 @@ The application uses **server-side cursor-based pagination** for fetching market
 
 ## AI Integration
 
-The application integrates with **OpenAI's GPT-5** for generating concise 3-4 sentence market analysis briefs. The `OpenAIService` constructs detailed prompts, formats probability implications, and manages API interactions. GPT-5 is configured with `max_completion_tokens=5000` to accommodate its reasoning process and `reasoning_effort="low"` for simple analysis tasks.
+The application integrates with two AI services:
+
+### Google Gemini AI (Game Previews)
+- **Model**: Gemini 2.5 Flash
+- **Service**: `gemini_service.py`
+- **Purpose**: Generates engaging game previews with player-specific insights for each matchup
+- **Features**:
+  - Names 2-3 key players per team with positions (e.g., "QB Russell Wilson", "DE Maxx Crosby")
+  - Recent performance stats and trends
+  - Tactical matchup analysis
+  - Context from Kalshi probabilities and sportsbook odds
+- **Display**: Appears on detail pages in "🤖 AI Game Preview" section
+- **Authentication**: Requires `GEMINI_API_KEY` environment variable (from Google AI Studio)
+
+### OpenAI (Market Analysis)
+- **Model**: GPT-5 (August 2025 release)
+- **Service**: `openai_service.py`
+- **Purpose**: Generates concise 3-4 sentence market analysis briefs
+- **Configuration**: Uses `max_completion_tokens=5000` and `reasoning_effort="low"` for simple analysis tasks
+- **Authentication**: Requires `OPENAI_API_KEY` environment variable
 
 # External Dependencies
 
