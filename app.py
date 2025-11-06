@@ -223,6 +223,18 @@ st.markdown("""
         color: #f1f5f9 !important;
         border-radius: 8px !important;
     }
+    
+    /* Plotly chart containers - dark mode */
+    .js-plotly-plot,
+    .plotly {
+        background-color: #1e293b !important;
+        border-radius: 8px;
+    }
+    
+    .stPlotlyChart {
+        background-color: #1e293b !important;
+        border-radius: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -598,16 +610,7 @@ def page_detail():
     
     # Display probability badge and quality indicator
     if bid_val is not None:
-        st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-            <div class="probability-badge {quality_class}">
-                {pct(bid_val)}
-            </div>
-            <div class="value-indicator {quality_class}">
-                {quality_label}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;"><div class="prob-badge {quality_class}">{pct(bid_val)}</div><div class="value-indicator value-{"strong" if "excellent" in quality_class else "moderate" if "good" in quality_class else "weak"}">{quality_label}</div></div>', unsafe_allow_html=True)
         st.caption(f"**{label}** - {quality_desc}")
     
     st.subheader("🏆 Winner Market")
@@ -628,9 +631,9 @@ def page_detail():
     r[1].write(pct(bid_val))
     r[2].code(w.get("ticker") or "")
 
-    # Sportsbook Odds vs Kalshi Odds Comparison
+    # Sportsbook Odds vs Prediction Market Comparison
     st.divider()
-    st.subheader("📊 Sportsbook Odds vs Kalshi Prediction Market")
+    st.subheader("📊 Sportsbook Odds vs OddSense Market")
     
     # Initialize The Odds API service
     odds_api = OddsAPIService()
@@ -645,7 +648,7 @@ def page_detail():
         if game_odds:
             st.info(
                 "**Comparing prediction markets to sportsbooks:** "
-                "See how Kalshi's prediction market compares to traditional sportsbook odds. "
+                "See how the prediction market compares to traditional sportsbook odds. "
                 "Differences can reveal arbitrage opportunities or varying market confidence."
             )
             
@@ -759,7 +762,7 @@ def page_detail():
             with col1:
                 st.markdown("**Team**")
             with col2:
-                st.markdown("**Kalshi**")
+                st.markdown("**OddSense**")
             with col3:
                 st.markdown("**Sportsbook Avg**")
             with col4:
@@ -869,7 +872,7 @@ def page_detail():
     if game_finished and bid_val is not None:
         st.info(
             "**Compare predictions to reality:** "
-            "See how accurate the Kalshi market was by comparing the implied probability to the actual game result from ESPN."
+            "See how accurate the prediction market was by comparing the implied probability to the actual game result from ESPN."
         )
         
         # Try to fetch ESPN game result
@@ -939,13 +942,13 @@ def page_detail():
                                 implied_labeled_team_win = comparison.get('implied_win_probability', 0)
                                 
                                 st.metric(
-                                    "Kalshi Prediction",
+                                    "Market Prediction",
                                     comparison.get('kalshi_percentage'),
                                     help=f"No contract on {labeled_team_name} at {pct(bid_val)} implies {opponent_name} has {comparison.get('kalshi_percentage')} chance to win"
                                 )
                             else:
                                 st.metric(
-                                    "Kalshi Prediction",
+                                    "Market Prediction",
                                     comparison.get('kalshi_percentage'),
                                     help=f"Market was {comparison.get('confidence_level')} that {comparison.get('team_name')} would win"
                                 )

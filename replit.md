@@ -6,8 +6,18 @@ The business vision is to offer a user-friendly platform for exploring NFL predi
 
 # Recent Changes
 
-**November 6, 2025**
-- Fixed critical HTML rendering bug where market card probability badges and quality labels were displaying as raw HTML code blocks instead of rendering properly. Resolved by converting multi-line f-string HTML template to single-line format to avoid Streamlit parsing issues with whitespace.
+**November 6, 2025 - Dark Mode Redesign & Rebranding**
+- Completely redesigned app with Figma-like dark mode aesthetics
+- Rebranded from "NFL Kalshi Markets" to "OddSense" throughout the application
+- Updated Streamlit theme configuration with dark slate backgrounds (#0f172a, #1e293b) and indigo primary color (#6366f1)
+- Redesigned market cards with dark backgrounds, improved hover effects, and better visual hierarchy
+- Updated all text colors for optimal contrast and readability on dark backgrounds
+- Configured Plotly charts with dark theme (plotly_dark template) and matching color schemes
+- Replaced user-facing "Kalshi" references with "OddSense" or generic "Prediction Market" terminology
+- Fixed CSS class mismatches (probability-badge → prob-badge) for consistent styling
+- Enhanced typography with better font weights, letter spacing, and modern spacing throughout
+- Added smooth transitions and hover animations to cards for polished UX
+- Fixed critical HTML rendering bug where market card probability badges and quality labels were displaying as raw HTML code blocks instead of rendering properly
 - Note: The Odds API key (`ODDS_API_KEY` environment variable) appears to be invalid or expired, resulting in 401 Unauthorized errors. Sportsbook consensus feature will not display until a valid API key is configured.
 
 # User Preferences
