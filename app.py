@@ -595,7 +595,26 @@ def page_detail():
         )
         
         if summary:
-            st.info(summary)
+            # Format the AI preview with better typography and spacing
+            st.markdown(f"""
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 2rem;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                    margin: 1rem 0;
+                ">
+                    <div style="
+                        color: white;
+                        font-size: 1.15rem;
+                        line-height: 1.8;
+                        font-weight: 400;
+                        letter-spacing: 0.3px;
+                    ">
+                        {summary.replace('. ', '.<br><br>')}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
         else:
             st.warning("AI game preview unavailable. Check back soon!")
     

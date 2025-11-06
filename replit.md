@@ -15,6 +15,7 @@ The business vision is to offer a user-friendly platform for exploring NFL predi
 - Fixed all method signatures and data structures to match The Odds API response format
 - Removed deprecated SportsGameOdds service file
 - Updated all documentation to reflect The Odds API as the primary sportsbook data source
+- **Enhanced AI Game Preview formatting**: Redesigned with purple-to-indigo gradient background, larger text (1.15rem), improved line spacing (1.8), sentence breaks for better readability, rounded corners, and box shadows for premium visual appeal
 
 **Earlier - Dark Mode Redesign & Rebranding**
 - Completely redesigned app with Figma-like dark mode aesthetics
