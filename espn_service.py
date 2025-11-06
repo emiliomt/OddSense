@@ -16,11 +16,13 @@ class ESPNService:
     
     BASE_URL = "http://site.api.espn.com/apis/site/v2/sports/football/nfl"
     
+    CORE_API_URL = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl"
+    
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
             'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (compatible; KalshiMarketsExplorer/1.0)'
+            'User-Agent': 'Mozilla/5.0 (compatible; OddSense/1.0)'
         })
     
     def get_scoreboard(self, date: Optional[str] = None, week: Optional[int] = None, 
@@ -401,6 +403,161 @@ class ESPNService:
                 analysis['message'] = f"❌ Expected result. The market was {confidence} ({kalshi_pct:.0f}%) that {team_name} would win, and they lost as predicted."
         
         return analysis
+    
+    def get_team_roster(self, team_id: str) -> Optional[Dict]:
+        """
+        Fetch team roster with player information.
+        
+        Args:
+            team_id: ESPN team ID (e.g., '1' for Falcons)
+        
+        Returns:
+            Dict with roster data
+        """
+        url = f"{self.BASE_URL}/teams/{team_id}/roster"
+        
+        try:
+            logger.info(f"Fetching roster for team {team_id}")
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            logger.info(f"Successfully fetched roster for team {team_id}")
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching roster for team {team_id}: {e}")
+            return None
+    
+    def get_player_stats(self, player_id: str) -> Optional[Dict]:
+        """
+        Fetch player statistics.
+        
+        Args:
+            player_id: ESPN player ID
+        
+        Returns:
+            Dict with player stats
+        """
+        url = f"https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/{player_id}/stats"
+        
+        try:
+            logger.info(f"Fetching stats for player {player_id}")
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            logger.info(f"Successfully fetched stats for player {player_id}")
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching stats for player {player_id}: {e}")
+            return None
+    
+    def get_team_id_by_name(self, team_name: str) -> Optional[str]:
+        """
+        Map team name to ESPN team ID.
+        
+        Returns:
+            ESPN team ID as string, or None if not found
+        """
+        # ESPN team ID mapping
+        team_map = {
+            'Arizona Cardinals': '22', 'Cardinals': '22',
+            'Atlanta Falcons': '1', 'Falcons': '1',
+            'Baltimore Ravens': '33', 'Ravens': '33',
+            'Buffalo Bills': '2', 'Bills': '2',
+            'Carolina Panthers': '29', 'Panthers': '29',
+            'Chicago Bears': '3', 'Bears': '3',
+            'Cincinnati Bengals': '4', 'Bengals': '4',
+            'Cleveland Browns': '5', 'Browns': '5',
+            'Dallas Cowboys': '6', 'Cowboys': '6',
+            'Denver Broncos': '7', 'Broncos': '7',
+            'Detroit Lions': '8', 'Lions': '8',
+            'Green Bay Packers': '9', 'Packers': '9',
+            'Houston Texans': '34', 'Texans': '34',
+            'Indianapolis Colts': '11', 'Colts': '11',
+            'Jacksonville Jaguars': '30', 'Jaguars': '30',
+            'Kansas City Chiefs': '12', 'Chiefs': '12',
+            'Las Vegas Raiders': '13', 'Raiders': '13', 'Oakland Raiders': '13',
+            'Los Angeles Chargers': '24', 'Chargers': '24',
+            'Los Angeles Rams': '14', 'Rams': '14',
+            'Miami Dolphins': '15', 'Dolphins': '15',
+            'Minnesota Vikings': '16', 'Vikings': '16',
+            'New England Patriots': '17', 'Patriots': '17',
+            'New Orleans Saints': '18', 'Saints': '18',
+            'New York Giants': '19', 'Giants': '19',
+            'New York Jets': '20', 'Jets': '20',
+            'Philadelphia Eagles': '21', 'Eagles': '21',
+            'Pittsburgh Steelers': '23', 'Steelers': '23',
+            'San Francisco 49ers': '25', '49ers': '25',
+            'Seattle Seahawks': '26', 'Seahawks': '26',
+            'Tampa Bay Buccaneers': '27', 'Buccaneers': '27',
+            'Tennessee Titans': '10', 'Titans': '10',
+            'Washington Commanders': '28', 'Commanders': '28', 'Washington': '28',
+        }
+        
+        # Try direct match first
+        if team_name in team_map:
+            return team_map[team_name]
+        
+        # Try case-insensitive match
+        team_name_lower = team_name.lower()
+        for key, value in team_map.items():
+            if key.lower() == team_name_lower:
+                return value
+        
+        # Try partial match (team nickname)
+        for key, value in team_map.items():
+            if team_name_lower in key.lower() or key.lower() in team_name_lower:
+                return value
+        
+        logger.warning(f"Could not find ESPN team ID for: {team_name}")
+        return None
+    
+    def get_team_leaders(self, team_name: str, category: str = 'passing') -> List[Dict]:
+        """
+        Get team stat leaders for a specific category.
+        
+        Args:
+            team_name: Team name
+            category: Stat category ('passing', 'rushing', 'receiving', 'defense')
+        
+        Returns:
+            List of player dicts with stats
+        """
+        team_id = self.get_team_id_by_name(team_name)
+        if not team_id:
+            return []
+        
+        # Fetch team statistics page which includes leaders
+        url = f"{self.BASE_URL}/teams/{team_id}/statistics"
+        
+        try:
+            logger.info(f"Fetching team leaders for {team_name} (ID: {team_id})")
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract leaders from the response
+            leaders = []
+            if 'leaders' in data:
+                for leader_group in data['leaders']:
+                    if leader_group.get('name', '').lower() == category.lower():
+                        for leader in leader_group.get('leaders', []):
+                            athlete = leader.get('athlete', {})
+                            leaders.append({
+                                'id': athlete.get('id'),
+                                'name': athlete.get('displayName'),
+                                'position': athlete.get('position', {}).get('abbreviation'),
+                                'value': leader.get('displayValue'),
+                                'stat': leader_group.get('displayName')
+                            })
+            
+            logger.info(f"Found {len(leaders)} leaders for {team_name} in {category}")
+            return leaders
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching team leaders for {team_name}: {e}")
+            return []
 
 
 # Global instance

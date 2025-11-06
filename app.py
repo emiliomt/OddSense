@@ -10,7 +10,7 @@ import streamlit as st
 from espn_lookup import find_game_id
 from kalshi_service import KalshiService
 from espn_service import espn
-from sportsgameodds_service import SportsGameOddsService
+from odds_api_service import OddsAPIService
 from gemini_service import GeminiService
 
 st.set_page_config(page_title="OddSense",
@@ -381,7 +381,7 @@ def page_list():
     st.caption(f"📊 {total} games • Page {p}/{pages}")
 
     # Initialize SportsGameOdds API service for sportsbook data
-    odds_api = SportsGameOddsService()
+    odds_api = OddsAPIService()
 
     # Mobile-optimized market cards
     for ev in events[start:end]:
@@ -430,18 +430,18 @@ def page_list():
             try:
                 game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
                 if game_odds:
-                    consensus = odds_api.get_market_consensus(game_odds, market='h2h')
+                    consensus = odds_api.get_market_consensus(game_odds)
                     if consensus:
                         # Determine which team the primary contract is for
                         subject_team = w.get('subject_team', '')
                         
                         # Get sportsbook average for the same team
-                        if subject_team == away_team_name and consensus.get('away_team'):
-                            avg_prob = consensus['away_team']['average_probability']
-                            sportsbook_str = f"{avg_prob*100:.0f}%"
-                        elif subject_team == home_team_name and consensus.get('home_team'):
-                            avg_prob = consensus['home_team']['average_probability']
-                            sportsbook_str = f"{avg_prob*100:.0f}%"
+                        if subject_team == away_team_name and away_team_name in consensus:
+                            avg_prob = consensus[away_team_name]
+                            sportsbook_str = f"{avg_prob:.0f}%"
+                        elif subject_team == home_team_name and home_team_name in consensus:
+                            avg_prob = consensus[home_team_name]
+                            sportsbook_str = f"{avg_prob:.0f}%"
             except Exception:
                 # Silently fail - odds might not be available yet
                 pass
@@ -568,16 +568,16 @@ def page_detail():
         # Try to get sportsbook odds for context
         sportsbook_prob = None
         try:
-            odds_api = SportsGameOddsService()
+            odds_api = OddsAPIService()
             game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
             if game_odds:
-                consensus = odds_api.get_market_consensus(game_odds, market='h2h')
+                consensus = odds_api.get_market_consensus(game_odds)
                 if consensus:
                     subject_team = w_temp.get('subject_team', '')
-                    if subject_team == away_team_name and consensus.get('away_team'):
-                        sportsbook_prob = consensus['away_team']['average_probability']
-                    elif subject_team == home_team_name and consensus.get('home_team'):
-                        sportsbook_prob = consensus['home_team']['average_probability']
+                    if subject_team == away_team_name and away_team_name in consensus:
+                        sportsbook_prob = consensus[away_team_name] / 100  # Convert percentage to decimal
+                    elif subject_team == home_team_name and home_team_name in consensus:
+                        sportsbook_prob = consensus[home_team_name] / 100  # Convert percentage to decimal
         except Exception:
             pass
         
@@ -598,6 +598,33 @@ def page_detail():
             st.info(summary)
         else:
             st.warning("AI game preview unavailable. Check back soon!")
+    
+    # Team Stat Leaders Section
+    st.divider()
+    st.subheader("⭐ Team Stat Leaders")
+    
+    with st.expander("View Key Player Stats", expanded=False):
+        cols = st.columns(2)
+        
+        # Away team leaders
+        with cols[0]:
+            st.markdown(f"**{away_team_name}**")
+            away_leaders = espn.get_team_leaders(away_team_name, category='passing')
+            if away_leaders:
+                for leader in away_leaders[:3]:  # Top 3
+                    st.write(f"• **{leader.get('name')}** ({leader.get('position')}): {leader.get('value')}")
+            else:
+                st.caption("Stats unavailable")
+        
+        # Home team leaders
+        with cols[1]:
+            st.markdown(f"**{home_team_name}**")
+            home_leaders = espn.get_team_leaders(home_team_name, category='passing')
+            if home_leaders:
+                for leader in home_leaders[:3]:  # Top 3
+                    st.write(f"• **{leader.get('name')}** ({leader.get('position')}): {leader.get('value')}")
+            else:
+                st.caption("Stats unavailable")
     
     st.divider()
     
@@ -636,7 +663,7 @@ def page_detail():
     st.subheader("📊 Sportsbook Odds vs OddSense Market")
     
     # Initialize SportsGameOdds API service
-    odds_api = SportsGameOddsService()
+    odds_api = OddsAPIService()
     
     away_team_name = ev.get("away_team", "")
     home_team_name = ev.get("home_team", "")
@@ -652,9 +679,8 @@ def page_detail():
                 "Differences can reveal arbitrage opportunities or varying market confidence."
             )
             
-            # Get all bookmaker odds
-            all_odds = odds_api.get_all_bookmaker_odds(game_odds, market='h2h')
-            consensus = odds_api.get_market_consensus(game_odds, market='h2h')
+            # Get consensus across all sportsbooks
+            consensus = odds_api.get_market_consensus(game_odds)
             
             # Get prediction market probabilities for both teams
             away_kalshi_prob = None
@@ -781,19 +807,17 @@ def page_detail():
                     st.write("—")
             
             with col3:
-                if consensus and consensus.get('away_team'):
-                    avg_prob = consensus['away_team']['average_probability']
-                    num_books = consensus['away_team']['num_bookmakers']
-                    st.metric("", f"{avg_prob*100:.1f}%", 
-                             help=f"Average across {num_books} sportsbooks")
+                if consensus and away_team_name in consensus:
+                    avg_prob = consensus[away_team_name]
+                    st.metric("", f"{avg_prob:.1f}%")
                 else:
                     st.write("—")
             
             with col4:
-                best = odds_api.get_best_odds(game_odds, away_team_name, market='h2h')
+                best = odds_api.get_best_odds(game_odds, away_team_name)
                 if best:
                     st.metric("", f"{best['odds']:+d}", 
-                             help=f"{best['bookmaker']}: {best['implied_probability']*100:.1f}%")
+                             help=f"{best['bookmaker']}: {best['probability']:.1f}%")
                 else:
                     st.write("—")
             
@@ -810,24 +834,24 @@ def page_detail():
                     st.write("—")
             
             with col3:
-                if consensus and consensus.get('home_team'):
-                    avg_prob = consensus['home_team']['average_probability']
-                    num_books = consensus['home_team']['num_bookmakers']
-                    st.metric("", f"{avg_prob*100:.1f}%",
-                             help=f"Average across {num_books} sportsbooks")
+                if consensus and home_team_name in consensus:
+                    avg_prob = consensus[home_team_name]
+                    st.metric("", f"{avg_prob:.1f}%")
                 else:
                     st.write("—")
             
             with col4:
-                best = odds_api.get_best_odds(game_odds, home_team_name, market='h2h')
+                best = odds_api.get_best_odds(game_odds, home_team_name)
                 if best:
                     st.metric("", f"{best['odds']:+d}",
-                             help=f"{best['bookmaker']}: {best['implied_probability']*100:.1f}%")
+                             help=f"{best['bookmaker']}: {best['probability']:.1f}%")
                 else:
                     st.write("—")
             
             # Show available sportsbooks in an expander
-            if all_odds['away_team'] or all_odds['home_team']:
+            away_all_odds = odds_api.get_all_bookmaker_odds(game_odds, away_team_name)
+            home_all_odds = odds_api.get_all_bookmaker_odds(game_odds, home_team_name)
+            if away_all_odds or home_all_odds:
                 with st.expander("📋 View All Sportsbook Odds"):
                     st.caption("**All available odds for this game:**")
                     
@@ -835,21 +859,21 @@ def page_detail():
                     odds_data = []
                     
                     # Process away team odds
-                    for odd in all_odds['away_team']:
+                    for odd in away_all_odds:
                         odds_data.append({
                             'Team': f"{away_team_name} (Away)",
                             'Sportsbook': odd['bookmaker'],
                             'Odds': f"{odd['odds']:+d}",
-                            'Win Prob': f"{odd['implied_probability']*100:.1f}%"
+                            'Win Prob': f"{odd['probability']:.1f}%"
                         })
                     
                     # Process home team odds
-                    for odd in all_odds['home_team']:
+                    for odd in home_all_odds:
                         odds_data.append({
                             'Team': f"{home_team_name} (Home)",
                             'Sportsbook': odd['bookmaker'],
                             'Odds': f"{odd['odds']:+d}",
-                            'Win Prob': f"{odd['implied_probability']*100:.1f}%"
+                            'Win Prob': f"{odd['probability']:.1f}%"
                         })
                     
                     if odds_data:
