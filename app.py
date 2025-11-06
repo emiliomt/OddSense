@@ -295,6 +295,9 @@ def page_list():
 
     st.caption(f"📊 {total} games • Page {p}/{pages}")
 
+    # Initialize Odds API service for sportsbook data
+    odds_api = OddsAPIService()
+
     # Mobile-optimized market cards
     for ev in events[start:end]:
         w = ev.get("winner_primary", {}) or {}
@@ -333,6 +336,31 @@ def page_list():
         open_interest = ev.get('open_interest_sum', 0)
         oi_str = f"{open_interest:,.0f}" if open_interest >= 1000 else f"{open_interest:.0f}"
         
+        # Fetch sportsbook odds for comparison
+        sportsbook_str = ""
+        away_team_name = ev.get("away_team", "")
+        home_team_name = ev.get("home_team", "")
+        
+        if away_team_name and home_team_name:
+            try:
+                game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
+                if game_odds:
+                    consensus = odds_api.get_market_consensus(game_odds, market='h2h')
+                    if consensus:
+                        # Determine which team the primary contract is for
+                        subject_team = w.get('subject_team', '')
+                        
+                        # Get sportsbook average for the same team
+                        if subject_team == away_team_name and consensus.get('away_team'):
+                            avg_prob = consensus['away_team']['average_probability']
+                            sportsbook_str = f"{avg_prob*100:.0f}%"
+                        elif subject_team == home_team_name and consensus.get('home_team'):
+                            avg_prob = consensus['home_team']['average_probability']
+                            sportsbook_str = f"{avg_prob*100:.0f}%"
+            except Exception:
+                # Silently fail - odds might not be available yet
+                pass
+        
         st.markdown(f"""
         <div class="market-card {card_class}">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
@@ -347,6 +375,7 @@ def page_list():
                         <span title="24-hour trading volume">📊 {volume_str}</span>
                         <span title="Open interest (total contracts)">📈 {oi_str}</span>
                         {f'<span title="Time until market closes">⏱️ {time_left_str}</span>' if time_left_str else ''}
+                        {f'<span title="Sportsbook consensus average">🎲 {sportsbook_str}</span>' if sportsbook_str else ''}
                     </div>
                 </div>
                 <div style="text-align: right;">
