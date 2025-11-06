@@ -13,143 +13,215 @@ from espn_service import espn
 from odds_api_service import OddsAPIService
 from gemini_service import GeminiService
 
-st.set_page_config(page_title="NFL Kalshi Markets",
-                   page_icon="🏈",
+st.set_page_config(page_title="OddSense",
+                   page_icon="📊",
                    layout="wide",
                    initial_sidebar_state="collapsed")
 
 CONTEXT_URL = os.getenv("CONTEXT_URL", "http://localhost:8000")
 
-# Mobile-optimized CSS
+# Figma-like Dark Mode CSS
 st.markdown("""
 <style>
+    /* Global dark theme */
+    .stApp {
+        background-color: #0f172a;
+    }
+    
     /* Mobile-first responsive design */
     @media (max-width: 768px) {
         .stApp {
             padding: 0.5rem;
         }
         h1 {
-            font-size: 1.5rem !important;
+            font-size: 1.75rem !important;
         }
         h2 {
-            font-size: 1.2rem !important;
-        }
-        .element-container {
-            margin-bottom: 0.5rem;
+            font-size: 1.25rem !important;
         }
     }
     
-    /* Odds quality indicators */
+    /* Typography improvements */
+    h1 {
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
+        color: #f1f5f9 !important;
+    }
+    
+    /* Odds quality indicators - dark mode */
     .odds-excellent {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         color: white;
         padding: 0.75rem 1rem;
-        border-radius: 12px;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+        border-radius: 10px;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
     }
     
     .odds-good {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
         color: white;
         padding: 0.75rem 1rem;
-        border-radius: 12px;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+        border-radius: 10px;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
     }
     
     .odds-neutral {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
         padding: 0.75rem 1rem;
-        border-radius: 12px;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3);
+        border-radius: 10px;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
     }
     
     .odds-poor {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         color: white;
         padding: 0.75rem 1rem;
-        border-radius: 12px;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+        border-radius: 10px;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
     }
     
-    /* Clean market cards */
+    /* Figma-like dark market cards */
     .market-card {
-        background: white;
-        border-radius: 16px;
-        padding: 1rem;
+        background: #1e293b;
+        border-radius: 12px;
+        padding: 1.25rem;
         margin-bottom: 1rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-left: 4px solid #3b82f6;
+        border: 1px solid #334155;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+    }
+    
+    .market-card:hover {
+        border-color: #475569;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        transform: translateY(-2px);
     }
     
     .market-card-excellent {
-        border-left-color: #10b981;
+        border-left: 3px solid #10b981;
     }
     
     .market-card-good {
-        border-left-color: #3b82f6;
+        border-left: 3px solid #6366f1;
     }
     
     .market-card-neutral {
-        border-left-color: #f59e0b;
+        border-left: 3px solid #f59e0b;
     }
     
     .market-card-poor {
-        border-left-color: #ef4444;
+        border-left: 3px solid #ef4444;
     }
     
-    /* Probability badge */
+    /* Probability badge - dark mode */
     .prob-badge {
         display: inline-block;
-        font-size: 1.5rem;
-        font-weight: 700;
-        padding: 0.25rem 0.75rem;
-        border-radius: 8px;
+        font-size: 1.75rem;
+        font-weight: 800;
+        padding: 0.375rem 1rem;
+        border-radius: 10px;
         margin: 0.5rem 0;
+        letter-spacing: -0.02em;
     }
     
-    /* Value indicator */
+    /* Value indicator - dark mode */
     .value-indicator {
         font-size: 0.875rem;
         font-weight: 600;
-        padding: 0.25rem 0.5rem;
-        border-radius: 6px;
+        padding: 0.375rem 0.75rem;
+        border-radius: 8px;
         display: inline-block;
-        margin-top: 0.25rem;
+        margin-top: 0.375rem;
+        letter-spacing: 0.01em;
     }
     
     .value-strong {
-        background: #d1fae5;
-        color: #065f46;
+        background: rgba(16, 185, 129, 0.15);
+        color: #6ee7b7;
+        border: 1px solid rgba(16, 185, 129, 0.3);
     }
     
     .value-moderate {
-        background: #dbeafe;
-        color: #1e40af;
+        background: rgba(99, 102, 241, 0.15);
+        color: #a5b4fc;
+        border: 1px solid rgba(99, 102, 241, 0.3);
     }
     
     .value-weak {
-        background: #fee2e2;
-        color: #991b1b;
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.3);
     }
     
-    /* Market metrics row */
+    /* Market metrics row - dark mode */
     .market-metrics {
-        font-size: 0.75rem !important;
-        color: #9ca3af !important;
+        font-size: 0.8rem !important;
+        color: #94a3b8 !important;
         display: flex;
-        gap: 12px;
+        gap: 14px;
         flex-wrap: wrap;
-        margin-top: 0.5rem;
+        margin-top: 0.75rem;
+        font-weight: 500;
     }
     
     .market-metrics span {
-        font-size: 0.75rem !important;
-        color: #9ca3af !important;
+        font-size: 0.8rem !important;
+        color: #94a3b8 !important;
+        background: rgba(51, 65, 85, 0.5);
+        padding: 0.25rem 0.625rem;
+        border-radius: 6px;
+    }
+    
+    /* Buttons - dark mode */
+    .stButton > button {
+        background: #1e293b !important;
+        border: 1px solid #334155 !important;
+        color: #f1f5f9 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stButton > button:hover {
+        background: #334155 !important;
+        border-color: #475569 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    /* Link buttons - dark mode */
+    a[data-testid="stLinkButton"] {
+        text-decoration: none !important;
+    }
+    
+    /* Sidebar - dark mode */
+    [data-testid="stSidebar"] {
+        background-color: #1e293b !important;
+    }
+    
+    /* Inputs - dark mode */
+    .stTextInput input {
+        background-color: #1e293b !important;
+        border: 1px solid #334155 !important;
+        color: #f1f5f9 !important;
+        border-radius: 8px !important;
+    }
+    
+    .stTextInput input:focus {
+        border-color: #6366f1 !important;
+        box-shadow: 0 0 0 1px #6366f1 !important;
+    }
+    
+    /* Number input - dark mode */
+    .stNumberInput input {
+        background-color: #1e293b !important;
+        border: 1px solid #334155 !important;
+        color: #f1f5f9 !important;
+        border-radius: 8px !important;
     }
 </style>
 """, unsafe_allow_html=True)
