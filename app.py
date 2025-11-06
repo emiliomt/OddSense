@@ -325,7 +325,7 @@ def pick_display_label_and_bid(w: dict) -> tuple[str, Optional[float]]:
 
 
 def page_list():
-    st.title("🏈 NFL Kalshi Markets")
+    st.title("📊 OddSense")
 
     with st.sidebar:
         st.subheader("Filters")
@@ -447,7 +447,7 @@ def page_list():
         sportsbook_metric = f'<span title="Sportsbook consensus average">🎲 {sportsbook_str}</span>' if sportsbook_str else ''
         
         # Build card HTML as a single line to avoid Streamlit parsing issues
-        card_html = f'<div class="market-card {card_class}"><div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;"><div style="flex: 1;"><div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">{matchup}</div><div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem;">{label}</div><div class="market-metrics"><span title="24-hour trading volume">📊 {volume_str}</span><span title="Open interest (total contracts)">📈 {oi_str}</span>{time_metric}{sportsbook_metric}</div></div><div style="text-align: right;"><div class="prob-badge {quality_class}">{prob_pct}</div><div class="value-indicator value-{value_class}">{quality_label}</div></div></div></div>'
+        card_html = f'<div class="market-card {card_class}"><div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;"><div style="flex: 1;"><div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; color: #f1f5f9;">{matchup}</div><div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">{label}</div><div class="market-metrics"><span title="24-hour trading volume">📊 {volume_str}</span><span title="Open interest (total contracts)">📈 {oi_str}</span>{time_metric}{sportsbook_metric}</div></div><div style="text-align: right;"><div class="prob-badge {quality_class}">{prob_pct}</div><div class="value-indicator value-{value_class}">{quality_label}</div></div></div></div>'
         
         st.markdown(card_html, unsafe_allow_html=True)
         
@@ -464,7 +464,7 @@ def page_list():
                 qp_set(page="list")
                 st.rerun()
     with col2:
-        st.markdown(f"<div style='text-align: center; padding: 0.5rem;'>Page {p} of {pages}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; padding: 0.5rem; color: #94a3b8;'>Page {p} of {pages}</div>", unsafe_allow_html=True)
     with col3:
         if p < pages:
             if st.button("Next ➡️", use_container_width=True):
