@@ -69,7 +69,15 @@ class SportsGameOddsService:
         
         try:
             logger.info(f"Fetching NFL events from SportsGameOdds API (cache miss)")
+            logger.info(f"Request URL: {url}")
+            logger.info(f"Request params: {params}")
             response = self.session.get(url, params=params, timeout=10)
+            
+            # Log response details before raising for status
+            if response.status_code != 200:
+                logger.error(f"API returned status {response.status_code}")
+                logger.error(f"Response body: {response.text}")
+            
             response.raise_for_status()
             
             data = response.json()
@@ -88,6 +96,7 @@ class SportsGameOddsService:
             return events
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP Error fetching from SportsGameOdds API: {e}")
+            logger.error(f"Check your SPORTSGAMEODDS_API_KEY environment variable")
             # Return cached data if available, even if expired
             if SportsGameOddsService._events_cache is not None:
                 logger.info("Returning stale cache due to API error")
