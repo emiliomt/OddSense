@@ -1030,7 +1030,7 @@ def page_detail():
                     y=closes,
                     mode='lines',
                     name='Close Price',
-                    line=dict(color='#1f77b4', width=2),
+                    line=dict(color='#6366f1', width=3),
                     hovertemplate='<b>Time:</b> %{x}<br><b>Price:</b> $%{y:.2f}<extra></extra>'
                 ))
                 
@@ -1040,7 +1040,11 @@ def page_detail():
                     yaxis_title="Price (Probability)",
                     yaxis=dict(tickformat='.0%', range=[0, 1]),
                     hovermode='x unified',
-                    height=400
+                    height=400,
+                    template='plotly_dark',
+                    paper_bgcolor='#1e293b',
+                    plot_bgcolor='#1e293b',
+                    font=dict(color='#f1f5f9')
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -1052,7 +1056,7 @@ def page_detail():
                         x=timestamps,
                         y=volumes,
                         name='Volume',
-                        marker_color='lightblue',
+                        marker_color='#10b981',
                         hovertemplate='<b>Time:</b> %{x}<br><b>Volume:</b> %{y}<extra></extra>'
                     ))
                     
@@ -1060,7 +1064,11 @@ def page_detail():
                         title="Trading Volume Over Time",
                         xaxis_title="Time",
                         yaxis_title="Volume",
-                        height=300
+                        height=300,
+                        template='plotly_dark',
+                        paper_bgcolor='#1e293b',
+                        plot_bgcolor='#1e293b',
+                        font=dict(color='#f1f5f9')
                     )
                     
                     with st.expander("📊 View Volume History"):
