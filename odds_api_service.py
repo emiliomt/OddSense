@@ -36,19 +36,45 @@ class OddsAPIService:
         Returns:
             List of games with odds from multiple bookmakers
         """
+        # Try the events endpoint first
         url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/events"
         
         try:
             logger.info(f"Fetching odds from The Rundown API: {url}")
             response = self.session.get(url, timeout=10)
+            
+            # If 404, try alternative endpoint structure
+            if response.status_code == 404:
+                logger.warning(f"404 on /events endpoint, trying /schedules")
+                url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/schedules"
+                response = self.session.get(url, timeout=10)
+            
             response.raise_for_status()
             
             data = response.json()
-            events = data.get('events', []) if isinstance(data, dict) else []
+            
+            # Handle different response structures
+            if isinstance(data, dict):
+                events = data.get('events', [])
+                if not events:
+                    # Try other possible keys
+                    events = data.get('data', [])
+                if not events:
+                    events = data.get('schedule', [])
+            elif isinstance(data, list):
+                events = data
+            else:
+                events = []
             
             logger.info(f"Successfully fetched odds for {len(events)} games")
             
             return events
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.error(f"The Rundown API endpoint not found. The API structure may have changed or sport_id {self.SPORT_ID} may be incorrect.")
+            else:
+                logger.error(f"HTTP Error fetching odds from The Rundown API: {e}")
+            return None
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching odds from The Rundown API: {e}")
             return None
@@ -75,14 +101,26 @@ class OddsAPIService:
         logger.info(f"Searching for game: {away_team} @ {home_team}")
         
         for event in all_odds:
+            # Try different possible team field structures
             teams_normalized = event.get('teams_normalized', [])
-            if len(teams_normalized) >= 2:
+            teams = event.get('teams', [])
+            
+            # Handle teams_normalized structure
+            if teams_normalized and len(teams_normalized) >= 2:
                 event_away = self._normalize_team_name(teams_normalized[0].get('name', ''))
                 event_home = self._normalize_team_name(teams_normalized[1].get('name', ''))
                 
-                # Check if both teams match
                 if away_normalized in event_away and home_normalized in event_home:
-                    logger.info(f"Found matching game: {teams_normalized[0].get('name')} @ {teams_normalized[1].get('name')}")
+                    logger.info(f"Found matching game via teams_normalized")
+                    return event
+            
+            # Handle simple teams array structure
+            if teams and len(teams) >= 2:
+                event_away = self._normalize_team_name(teams[0] if isinstance(teams[0], str) else teams[0].get('name', ''))
+                event_home = self._normalize_team_name(teams[1] if isinstance(teams[1], str) else teams[1].get('name', ''))
+                
+                if away_normalized in event_away and home_normalized in event_home:
+                    logger.info(f"Found matching game via teams array")
                     return event
         
         logger.warning(f"No game found for {away_team} @ {home_team}")
@@ -100,7 +138,14 @@ class OddsAPIService:
         Returns:
             Dict with best odds info: {'bookmaker': str, 'odds': int, 'price': float}
         """
-        if not game or 'lines' not in game:
+        if not game:
+            return None
+        
+        # Check for lines in different possible locations
+        lines = game.get('lines', {})
+        if not lines:
+            lines = game.get('odds', {})
+        if not lines:
             return None
         
         team_normalized = self._normalize_team_name(team)
@@ -109,16 +154,25 @@ class OddsAPIService:
         
         # Determine if team is away or home
         teams_normalized = game.get('teams_normalized', [])
-        if len(teams_normalized) < 2:
-            return None
+        teams = game.get('teams', [])
         
-        away_name = teams_normalized[0].get('name', '')
-        home_name = teams_normalized[1].get('name', '')
+        away_name = ''
+        home_name = ''
+        
+        if teams_normalized and len(teams_normalized) >= 2:
+            away_name = teams_normalized[0].get('name', '')
+            home_name = teams_normalized[1].get('name', '')
+        elif teams and len(teams) >= 2:
+            away_name = teams[0] if isinstance(teams[0], str) else teams[0].get('name', '')
+            home_name = teams[1] if isinstance(teams[1], str) else teams[1].get('name', '')
+        
+        if not away_name or not home_name:
+            return None
         
         is_away = team_normalized in self._normalize_team_name(away_name)
         
         # Iterate through bookmakers
-        for book_key, book_data in game.get('lines', {}).items():
+        for book_key, book_data in lines.items():
             if not isinstance(book_data, dict):
                 continue
             
@@ -154,13 +208,20 @@ class OddsAPIService:
         Returns:
             Dict with away_team and home_team odds lists
         """
-        if not game or 'lines' not in game:
+        if not game:
+            return {'away_team': [], 'home_team': []}
+        
+        # Check for lines in different possible locations
+        lines = game.get('lines', {})
+        if not lines:
+            lines = game.get('odds', {})
+        if not lines:
             return {'away_team': [], 'home_team': []}
         
         away_odds = []
         home_odds = []
         
-        for book_key, book_data in game.get('lines', {}).items():
+        for book_key, book_data in lines.items():
             if not isinstance(book_data, dict):
                 continue
             
