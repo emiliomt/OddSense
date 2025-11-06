@@ -36,18 +36,29 @@ class OddsAPIService:
         Returns:
             List of games with odds from multiple bookmakers
         """
-        # Try the events endpoint first
-        url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/events"
+        # The Rundown API uses /sports/{sport_id}/events/{date} format
+        # Try today's date first
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Try the events endpoint with date parameter
+        url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/events/{today}"
         
         try:
             logger.info(f"Fetching odds from The Rundown API: {url}")
             response = self.session.get(url, timeout=10)
             
-            # If 404, try alternative endpoint structure
+            # If 404, try without date
             if response.status_code == 404:
-                logger.warning(f"404 on /events endpoint, trying /schedules")
-                url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/schedules"
+                logger.warning(f"404 on dated endpoint, trying base events")
+                url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/events"
                 response = self.session.get(url, timeout=10)
+            
+            # If still 404, the API may not have data or structure changed
+            if response.status_code == 404:
+                logger.warning(f"No events found. API may have no current games or endpoint changed.")
+                # Return empty list instead of None to avoid breaking the app
+                return []
             
             response.raise_for_status()
             
@@ -70,14 +81,13 @@ class OddsAPIService:
             
             return events
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                logger.error(f"The Rundown API endpoint not found. The API structure may have changed or sport_id {self.SPORT_ID} may be incorrect.")
-            else:
-                logger.error(f"HTTP Error fetching odds from The Rundown API: {e}")
-            return None
+            logger.error(f"HTTP Error fetching odds from The Rundown API: {e}")
+            # Return empty list to gracefully handle API errors
+            return []
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching odds from The Rundown API: {e}")
-            return None
+            # Return empty list to gracefully handle network errors
+            return []
     
     def find_game_by_teams(self, away_team: str, home_team: str) -> Optional[Dict]:
         """
