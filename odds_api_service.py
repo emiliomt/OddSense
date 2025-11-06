@@ -1,6 +1,7 @@
+
 """
-The Odds API Service
-Fetches real-time betting odds from multiple sportsbooks via The-Odds-API.com
+The Rundown API Service
+Fetches real-time betting odds from multiple sportsbooks via The Rundown API (RapidAPI)
 """
 
 import requests
@@ -13,63 +14,43 @@ logger = logging.getLogger(__name__)
 
 
 class OddsAPIService:
-    """Service for fetching NFL betting odds from The Odds API."""
+    """Service for fetching NFL betting odds from The Rundown API."""
     
-    BASE_URL = "https://api.the-odds-api.com/v4/sports"
-    SPORT = "americanfootball_nfl"
+    BASE_URL = "https://therundown-therundown-v1.p.rapidapi.com"
+    SPORT_ID = 2  # NFL
     
     def __init__(self):
-        self.api_key = os.environ.get('ODDS_API_KEY')
-        if not self.api_key:
-            logger.warning("ODDS_API_KEY not found in environment variables")
+        self.api_key = os.environ.get('RAPIDAPI_KEY', '18e5027c32mshf0f052aa9879a25p1d3771jsn831d4331a324')
         
         self.session = requests.Session()
         self.session.headers.update({
             'Accept': 'application/json',
+            'x-rapidapi-host': 'therundown-therundown-v1.p.rapidapi.com',
+            'x-rapidapi-key': self.api_key
         })
     
-    def get_odds(self, regions: str = 'us', markets: str = 'h2h,spreads,totals', 
-                 oddsFormat: str = 'american') -> Optional[List[Dict]]:
+    def get_odds(self, **kwargs) -> Optional[List[Dict]]:
         """
         Fetch current NFL betting odds from multiple sportsbooks.
-        
-        Args:
-            regions: Comma-separated regions (e.g., 'us', 'uk', 'eu', 'au')
-            markets: Comma-separated markets (h2h=moneyline, spreads, totals=over/under)
-            oddsFormat: 'decimal' or 'american'
         
         Returns:
             List of games with odds from multiple bookmakers
         """
-        if not self.api_key:
-            logger.error("Cannot fetch odds: API key not configured")
-            return None
-        
-        url = f"{self.BASE_URL}/{self.SPORT}/odds"
-        params = {
-            'apiKey': self.api_key,
-            'regions': regions,
-            'markets': markets,
-            'oddsFormat': oddsFormat
-        }
+        url = f"{self.BASE_URL}/sports/{self.SPORT_ID}/events"
         
         try:
-            logger.info(f"Fetching odds from The Odds API: {url}")
-            response = self.session.get(url, params=params, timeout=10)
+            logger.info(f"Fetching odds from The Rundown API: {url}")
+            response = self.session.get(url, timeout=10)
             response.raise_for_status()
             
             data = response.json()
-            logger.info(f"Successfully fetched odds for {len(data)} games")
+            events = data.get('events', []) if isinstance(data, dict) else []
             
-            # Log remaining API requests
-            remaining = response.headers.get('x-requests-remaining')
-            used = response.headers.get('x-requests-used')
-            if remaining:
-                logger.info(f"API requests remaining: {remaining} (used: {used})")
+            logger.info(f"Successfully fetched odds for {len(events)} games")
             
-            return data
+            return events
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching odds from The Odds API: {e}")
+            logger.error(f"Error fetching odds from The Rundown API: {e}")
             return None
     
     def find_game_by_teams(self, away_team: str, home_team: str) -> Optional[Dict]:
@@ -93,14 +74,16 @@ class OddsAPIService:
         
         logger.info(f"Searching for game: {away_team} @ {home_team}")
         
-        for game in all_odds:
-            game_away = self._normalize_team_name(game.get('away_team', ''))
-            game_home = self._normalize_team_name(game.get('home_team', ''))
-            
-            # Check if both teams match
-            if away_normalized in game_away and home_normalized in game_home:
-                logger.info(f"Found matching game: {game.get('away_team')} @ {game.get('home_team')}")
-                return game
+        for event in all_odds:
+            teams_normalized = event.get('teams_normalized', [])
+            if len(teams_normalized) >= 2:
+                event_away = self._normalize_team_name(teams_normalized[0].get('name', ''))
+                event_home = self._normalize_team_name(teams_normalized[1].get('name', ''))
+                
+                # Check if both teams match
+                if away_normalized in event_away and home_normalized in event_home:
+                    logger.info(f"Found matching game: {teams_normalized[0].get('name')} @ {teams_normalized[1].get('name')}")
+                    return event
         
         logger.warning(f"No game found for {away_team} @ {home_team}")
         return None
@@ -110,40 +93,53 @@ class OddsAPIService:
         Get the best available odds for a specific team in a game.
         
         Args:
-            game: Game data from The Odds API
+            game: Game data from The Rundown API
             team: Team name to find odds for
             market: 'h2h' (moneyline), 'spreads', or 'totals'
         
         Returns:
             Dict with best odds info: {'bookmaker': str, 'odds': int, 'price': float}
         """
-        if not game or 'bookmakers' not in game:
+        if not game or 'lines' not in game:
             return None
         
         team_normalized = self._normalize_team_name(team)
         best_odds = None
         best_value = float('-inf')
         
-        for bookmaker in game['bookmakers']:
-            for market_data in bookmaker.get('markets', []):
-                if market_data['key'] != market:
-                    continue
+        # Determine if team is away or home
+        teams_normalized = game.get('teams_normalized', [])
+        if len(teams_normalized) < 2:
+            return None
+        
+        away_name = teams_normalized[0].get('name', '')
+        home_name = teams_normalized[1].get('name', '')
+        
+        is_away = team_normalized in self._normalize_team_name(away_name)
+        
+        # Iterate through bookmakers
+        for book_key, book_data in game.get('lines', {}).items():
+            if not isinstance(book_data, dict):
+                continue
+            
+            moneyline = book_data.get('moneyline', {})
+            if not moneyline:
+                continue
+            
+            # Get the appropriate moneyline value
+            if market == 'h2h':
+                if is_away:
+                    odds_value = moneyline.get('moneyline_away')
+                else:
+                    odds_value = moneyline.get('moneyline_home')
                 
-                for outcome in market_data.get('outcomes', []):
-                    outcome_team = self._normalize_team_name(outcome.get('name', ''))
-                    
-                    if team_normalized in outcome_team:
-                        odds_value = outcome.get('price', 0)
-                        
-                        # For American odds, more positive is better for underdogs
-                        # More negative (closer to 0) is better for favorites
-                        if odds_value > best_value:
-                            best_value = odds_value
-                            best_odds = {
-                                'bookmaker': bookmaker.get('title', bookmaker.get('key', 'Unknown')),
-                                'odds': odds_value,
-                                'implied_probability': self._american_to_probability(odds_value)
-                            }
+                if odds_value and odds_value > best_value:
+                    best_value = odds_value
+                    best_odds = {
+                        'bookmaker': book_data.get('affiliate', {}).get('affiliate_name', book_key),
+                        'odds': odds_value,
+                        'implied_probability': self._american_to_probability(odds_value)
+                    }
         
         return best_odds
     
@@ -152,43 +148,61 @@ class OddsAPIService:
         Get odds from all bookmakers for a game.
         
         Args:
-            game: Game data from The Odds API
+            game: Game data from The Rundown API
             market: 'h2h' (moneyline), 'spreads', or 'totals'
         
         Returns:
             Dict with away_team and home_team odds lists
         """
-        if not game or 'bookmakers' not in game:
+        if not game or 'lines' not in game:
             return {'away_team': [], 'home_team': []}
-        
-        away_team = game.get('away_team', '')
-        home_team = game.get('home_team', '')
         
         away_odds = []
         home_odds = []
         
-        for bookmaker in game['bookmakers']:
-            bookmaker_name = bookmaker.get('title', bookmaker.get('key', 'Unknown'))
+        for book_key, book_data in game.get('lines', {}).items():
+            if not isinstance(book_data, dict):
+                continue
             
-            for market_data in bookmaker.get('markets', []):
-                if market_data['key'] != market:
-                    continue
-                
-                for outcome in market_data.get('outcomes', []):
-                    outcome_team = outcome.get('name', '')
-                    odds_value = outcome.get('price', 0)
+            bookmaker_name = book_data.get('affiliate', {}).get('affiliate_name', book_key)
+            
+            if market == 'h2h':
+                moneyline = book_data.get('moneyline', {})
+                if moneyline:
+                    away_ml = moneyline.get('moneyline_away')
+                    home_ml = moneyline.get('moneyline_home')
                     
-                    odds_info = {
+                    if away_ml:
+                        away_odds.append({
+                            'bookmaker': bookmaker_name,
+                            'odds': away_ml,
+                            'implied_probability': self._american_to_probability(away_ml),
+                            'point': None
+                        })
+                    
+                    if home_ml:
+                        home_odds.append({
+                            'bookmaker': bookmaker_name,
+                            'odds': home_ml,
+                            'implied_probability': self._american_to_probability(home_ml),
+                            'point': None
+                        })
+            elif market == 'spreads':
+                spread = book_data.get('spread', {})
+                if spread:
+                    away_odds.append({
                         'bookmaker': bookmaker_name,
-                        'odds': odds_value,
-                        'implied_probability': self._american_to_probability(odds_value),
-                        'point': outcome.get('point')  # For spreads/totals
-                    }
+                        'odds': spread.get('point_spread_away_money'),
+                        'implied_probability': self._american_to_probability(spread.get('point_spread_away_money', 0)),
+                        'point': spread.get('point_spread_away')
+                    })
                     
-                    if self._normalize_team_name(outcome_team) == self._normalize_team_name(away_team):
-                        away_odds.append(odds_info)
-                    elif self._normalize_team_name(outcome_team) == self._normalize_team_name(home_team):
-                        home_odds.append(odds_info)
+                    home_odds.append({
+                        'bookmaker': bookmaker_name,
+                        'odds': spread.get('point_spread_home_money'),
+                        'implied_probability': self._american_to_probability(spread.get('point_spread_home_money', 0)),
+                        'point': spread.get('point_spread_home')
+                    })
         
         return {
             'away_team': away_odds,
@@ -200,7 +214,7 @@ class OddsAPIService:
         Calculate consensus (average) odds across all bookmakers.
         
         Args:
-            game: Game data from The Odds API
+            game: Game data from The Rundown API
             market: 'h2h', 'spreads', or 'totals'
         
         Returns:
@@ -212,8 +226,8 @@ class OddsAPIService:
             return None
         
         # Calculate average implied probability
-        away_probs = [odd['implied_probability'] for odd in all_odds['away_team']]
-        home_probs = [odd['implied_probability'] for odd in all_odds['home_team']]
+        away_probs = [odd['implied_probability'] for odd in all_odds['away_team'] if odd['implied_probability']]
+        home_probs = [odd['implied_probability'] for odd in all_odds['home_team'] if odd['implied_probability']]
         
         return {
             'away_team': {
@@ -237,7 +251,7 @@ class OddsAPIService:
         Returns:
             Implied probability as decimal (0.0 to 1.0)
         """
-        if american_odds == 0:
+        if american_odds == 0 or american_odds is None:
             return 0.0
         
         if american_odds > 0:
