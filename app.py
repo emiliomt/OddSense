@@ -10,7 +10,7 @@ import streamlit as st
 from espn_lookup import find_game_id
 from kalshi_service import KalshiService
 from espn_service import espn
-from odds_api_service import OddsAPIService
+from sportsgameodds_service import SportsGameOddsService
 from gemini_service import GeminiService
 
 st.set_page_config(page_title="OddSense",
@@ -380,8 +380,8 @@ def page_list():
 
     st.caption(f"📊 {total} games • Page {p}/{pages}")
 
-    # Initialize Odds API service for sportsbook data
-    odds_api = OddsAPIService()
+    # Initialize SportsGameOdds API service for sportsbook data
+    odds_api = SportsGameOddsService()
 
     # Mobile-optimized market cards
     for ev in events[start:end]:
@@ -568,7 +568,7 @@ def page_detail():
         # Try to get sportsbook odds for context
         sportsbook_prob = None
         try:
-            odds_api = OddsAPIService()
+            odds_api = SportsGameOddsService()
             game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
             if game_odds:
                 consensus = odds_api.get_market_consensus(game_odds, market='h2h')
@@ -635,8 +635,8 @@ def page_detail():
     st.divider()
     st.subheader("📊 Sportsbook Odds vs OddSense Market")
     
-    # Initialize The Odds API service
-    odds_api = OddsAPIService()
+    # Initialize SportsGameOdds API service
+    odds_api = SportsGameOddsService()
     
     away_team_name = ev.get("away_team", "")
     home_team_name = ev.get("home_team", "")

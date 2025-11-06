@@ -1,6 +1,6 @@
 # Overview
 
-This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi prediction market API, The Odds API for real-time sportsbook betting odds, ESPN's public API for historical game data, Google Gemini AI for game previews with player insights, and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, AI-generated game analysis with player highlights, multi-sportsbook odds comparison, and historical accuracy comparisons. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
+This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi prediction market API, SportsGameOdds API for real-time sportsbook betting odds, ESPN's public API for historical game data, Google Gemini AI for game previews with player insights, and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, AI-generated game analysis with player highlights, multi-sportsbook odds comparison, and historical accuracy comparisons. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
 
 The business vision is to offer a user-friendly platform for exploring NFL prediction markets, enhancing accessibility and understanding for both casual fans and serious traders. By leveraging AI for insights, comparing predictions to actual results, and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
 
@@ -43,7 +43,7 @@ The application utilizes **Streamlit** for its UI, offering a Python-native, rea
 The architecture follows a **service-oriented approach** to separate concerns:
 
 - `kalshi_service.py`: Manages all interactions with the Kalshi API, including data normalization.
-- `odds_api_service.py`: Fetches real-time betting odds from multiple sportsbooks via The Odds API. Includes American odds-to-probability conversion, consensus calculation across bookmakers, and best odds discovery.
+- `sportsgameodds_service.py`: Fetches real-time betting odds from multiple sportsbooks via SportsGameOdds API. Includes American odds-to-probability conversion, consensus calculation across bookmakers, best odds discovery, and 5-minute caching to minimize API calls.
 - `espn_service.py`: Fetches historical NFL game results from ESPN's public API for prediction accuracy comparison.
 - `gemini_service.py`: Generates AI-powered game previews with player insights using Google Gemini 2.5 Flash. Creates engaging 3-4 sentence summaries highlighting key players, recent stats, and tactical matchups.
 - `openai_service.py`: Handles the generation of AI-powered market analyses.
@@ -94,6 +94,8 @@ The application integrates with two AI services:
 
 ## Third-Party APIs
 
+**November 6, 2025 Update**: Successfully migrated sportsbook odds integration from The Odds API to SportsGameOdds API for enhanced features including pre-match/live odds, player props, and comprehensive historical data.
+
 ### Kalshi Trading API
 
 - **Endpoint**: `https://api.elections.kalshi.com/trade-api/v2`
@@ -101,10 +103,10 @@ The application integrates with two AI services:
 - **Purpose**: Fetches Professional Football Game prediction markets (`series_ticker=KXNFLGAME`), detailed market information, historical price data, and order books.
 - **Filtering**: Specifically uses `series_ticker=KXNFLGAME` to retrieve only game outcome contracts.
 
-### The Odds API
+### SportsGameOdds API
 
-- **Endpoint**: `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds`
-- **Authentication**: Requires `ODDS_API_KEY` environment variable.
+- **Endpoint**: `https://api.sportsgameodds.com/v2/events/`
+- **Authentication**: Requires `SPORTSGAMEODDS_API_KEY` environment variable (header: `X-Api-Key`).
 - **Purpose**: Fetches real-time betting odds from multiple sportsbooks for NFL games.
 - **Features**:
   - **Multi-Sportsbook Coverage**: Aggregates odds from DraftKings, FanDuel, BetMGM, Caesars, PointsBet, and more
@@ -122,7 +124,8 @@ The application integrates with two AI services:
   - Best available odds with bookmaker name
   - Expandable detailed view of all individual sportsbook odds
 - **Use Case**: Enables arbitrage opportunity detection, market consensus validation, and informed betting decisions
-- **Rate Limits**: API key includes request quota; remaining requests shown in logs
+- **Rate Limits**: API key includes request quota; implementation uses 5-minute caching to minimize API calls
+- **Caching Strategy**: Class-level cache shared across instances to prevent duplicate requests during page loads
 
 ### ESPN Public API
 
