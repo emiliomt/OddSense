@@ -135,6 +135,21 @@ st.markdown("""
         background: #fee2e2;
         color: #991b1b;
     }
+    
+    /* Market metrics row */
+    .market-metrics {
+        font-size: 0.75rem !important;
+        color: #9ca3af !important;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+    
+    .market-metrics span {
+        font-size: 0.75rem !important;
+        color: #9ca3af !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -295,15 +310,43 @@ def page_list():
         matchup = ev.get("pretty_event") or f"{ev['away_team']} @ {ev['home_team']}"
         prob_pct = f"{bid_val*100:.0f}%" if bid_val else "—"
         
+        # Calculate time left
+        close_dt = ev.get('close_dt')
+        time_left_str = ""
+        if close_dt:
+            now = datetime.now(timezone.utc)
+            time_diff = close_dt - now
+            hours_left = time_diff.total_seconds() / 3600
+            
+            if hours_left > 48:
+                days_left = int(hours_left / 24)
+                time_left_str = f"{days_left}d"
+            elif hours_left > 0:
+                time_left_str = f"{int(hours_left)}h"
+            else:
+                time_left_str = "Closed"
+        
+        # Format volume and open interest
+        volume_24h = ev.get('volume_24h_sum', 0)
+        volume_str = f"${volume_24h:,.0f}" if volume_24h >= 1000 else f"${volume_24h:.0f}"
+        
+        open_interest = ev.get('open_interest_sum', 0)
+        oi_str = f"{open_interest:,.0f}" if open_interest >= 1000 else f"{open_interest:.0f}"
+        
         st.markdown(f"""
         <div class="market-card {card_class}">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                 <div style="flex: 1;">
                     <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">
                         {matchup}
                     </div>
-                    <div style="font-size: 0.85rem; color: #6b7280;">
+                    <div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem;">
                         {label}
+                    </div>
+                    <div class="market-metrics">
+                        <span title="24-hour trading volume">📊 {volume_str}</span>
+                        <span title="Open interest (total contracts)">📈 {oi_str}</span>
+                        {f'<span title="Time until market closes">⏱️ {time_left_str}</span>' if time_left_str else ''}
                     </div>
                 </div>
                 <div style="text-align: right;">
