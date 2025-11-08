@@ -27,7 +27,7 @@ st.markdown("""
     .stApp {
         background-color: #0f172a;
     }
-    
+
     /* Top Navigation Menu */
     .top-nav {
         background: #1e293b;
@@ -41,7 +41,7 @@ st.markdown("""
         gap: 1rem;
         flex-wrap: wrap;
     }
-    
+
     .nav-brand {
         font-size: 1.5rem;
         font-weight: 700;
@@ -51,13 +51,13 @@ st.markdown("""
         align-items: center;
         gap: 0.5rem;
     }
-    
+
     .nav-links {
         display: flex;
         gap: 0.5rem;
         flex-wrap: wrap;
     }
-    
+
     .nav-link {
         background: transparent;
         border: 1px solid #334155;
@@ -68,35 +68,35 @@ st.markdown("""
         font-weight: 500;
         transition: all 0.2s ease;
     }
-    
+
     .nav-link:hover {
         background: #334155;
         color: #f1f5f9;
         border-color: #475569;
     }
-    
+
     .nav-link.active {
         background: #6366f1;
         color: white;
         border-color: #6366f1;
     }
-    
+
     @media (max-width: 768px) {
         .top-nav {
             flex-direction: column;
             align-items: flex-start;
         }
-        
+
         .nav-links {
             width: 100%;
         }
-        
+
         .nav-link {
             flex: 1;
             text-align: center;
         }
     }
-    
+
     /* Mobile-first responsive design */
     @media (max-width: 768px) {
         .stApp {
@@ -109,14 +109,14 @@ st.markdown("""
             font-size: 1.25rem !important;
         }
     }
-    
+
     /* Typography improvements */
     h1 {
         font-weight: 700 !important;
         letter-spacing: -0.02em !important;
         color: #f1f5f9 !important;
     }
-    
+
     /* Odds quality indicators - dark mode */
     .odds-excellent {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -126,7 +126,7 @@ st.markdown("""
         font-weight: 700;
         box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
     }
-    
+
     .odds-good {
         background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
         color: white;
@@ -135,7 +135,7 @@ st.markdown("""
         font-weight: 700;
         box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
     }
-    
+
     .odds-neutral {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
@@ -144,7 +144,7 @@ st.markdown("""
         font-weight: 700;
         box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
     }
-    
+
     .odds-poor {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         color: white;
@@ -153,7 +153,7 @@ st.markdown("""
         font-weight: 700;
         box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
     }
-    
+
     /* Figma-like dark market cards */
     .market-card {
         background: #1e293b;
@@ -164,29 +164,29 @@ st.markdown("""
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         transition: all 0.2s ease;
     }
-    
+
     .market-card:hover {
         border-color: #475569;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         transform: translateY(-2px);
     }
-    
+
     .market-card-excellent {
         border-left: 3px solid #10b981;
     }
-    
+
     .market-card-good {
         border-left: 3px solid #6366f1;
     }
-    
+
     .market-card-neutral {
         border-left: 3px solid #f59e0b;
     }
-    
+
     .market-card-poor {
         border-left: 3px solid #ef4444;
     }
-    
+
     /* Probability badge - dark mode */
     .prob-badge {
         display: inline-block;
@@ -197,7 +197,7 @@ st.markdown("""
         margin: 0.5rem 0;
         letter-spacing: -0.02em;
     }
-    
+
     /* Value indicator - dark mode */
     .value-indicator {
         font-size: 0.875rem;
@@ -208,25 +208,25 @@ st.markdown("""
         margin-top: 0.375rem;
         letter-spacing: 0.01em;
     }
-    
+
     .value-strong {
         background: rgba(16, 185, 129, 0.15);
         color: #6ee7b7;
         border: 1px solid rgba(16, 185, 129, 0.3);
     }
-    
+
     .value-moderate {
         background: rgba(99, 102, 241, 0.15);
         color: #a5b4fc;
         border: 1px solid rgba(99, 102, 241, 0.3);
     }
-    
+
     .value-weak {
         background: rgba(239, 68, 68, 0.15);
         color: #fca5a5;
         border: 1px solid rgba(239, 68, 68, 0.3);
     }
-    
+
     /* Market metrics row - dark mode */
     .market-metrics {
         font-size: 0.8rem !important;
@@ -237,7 +237,7 @@ st.markdown("""
         margin-top: 0.75rem;
         font-weight: 500;
     }
-    
+
     .market-metrics span {
         font-size: 0.8rem !important;
         color: #94a3b8 !important;
@@ -245,7 +245,7 @@ st.markdown("""
         padding: 0.25rem 0.625rem;
         border-radius: 6px;
     }
-    
+
     /* Buttons - dark mode */
     .stButton > button {
         background: #1e293b !important;
@@ -255,23 +255,23 @@ st.markdown("""
         font-weight: 600 !important;
         transition: all 0.2s ease !important;
     }
-    
+
     .stButton > button:hover {
         background: #334155 !important;
         border-color: #475569 !important;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
     }
-    
+
     /* Link buttons - dark mode */
     a[data-testid="stLinkButton"] {
         text-decoration: none !important;
     }
-    
+
     /* Sidebar - dark mode */
     [data-testid="stSidebar"] {
         background-color: #1e293b !important;
     }
-    
+
     /* Inputs - dark mode */
     .stTextInput input {
         background-color: #1e293b !important;
@@ -279,12 +279,12 @@ st.markdown("""
         color: #f1f5f9 !important;
         border-radius: 8px !important;
     }
-    
+
     .stTextInput input:focus {
         border-color: #6366f1 !important;
         box-shadow: 0 0 0 1px #6366f1 !important;
     }
-    
+
     /* Number input - dark mode */
     .stNumberInput input {
         background-color: #1e293b !important;
@@ -292,14 +292,14 @@ st.markdown("""
         color: #f1f5f9 !important;
         border-radius: 8px !important;
     }
-    
+
     /* Plotly chart containers - dark mode */
     .js-plotly-plot,
     .plotly {
         background-color: #1e293b !important;
         border-radius: 8px;
     }
-    
+
     .stPlotlyChart {
         background-color: #1e293b !important;
         border-radius: 8px;
@@ -340,23 +340,29 @@ def pct(x: Optional[float]) -> str:
 
 def render_top_nav(current_page: str = "list"):
     """Render top navigation menu"""
-    list_active = "active" if current_page == "list" else ""
-    
-    nav_html = f"""
-    <div class="top-nav">
-        <a href="?page=list" class="nav-brand">📊 OddSense</a>
-        <div class="nav-links">
-            <a href="?page=list" class="nav-link {list_active}">🏠 All Markets</a>
-        </div>
-    </div>
-    """
-    st.markdown(nav_html, unsafe_allow_html=True)
+    # Create navigation bar with columns
+    nav_container = st.container()
+    with nav_container:
+        col1, col2 = st.columns([1, 4])
+
+        with col1:
+            st.markdown('<div style="font-size: 1.5rem; font-weight: 700; color: #f1f5f9; padding: 0.75rem 0;">📊 OddSense</div>', unsafe_allow_html=True)
+
+        with col2:
+            if current_page != "list":
+                if st.button("🏠 All Markets", key="nav_home_button", use_container_width=False):
+                    qp_set(page="list")
+                    st.rerun()
+            else:
+                st.markdown('<div style="background: #6366f1; color: white; border: 1px solid #6366f1; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin-top: 0.5rem;">🏠 All Markets</div>', unsafe_allow_html=True)
+
+        st.markdown('<hr style="margin: 1rem 0; border-color: #334155;">', unsafe_allow_html=True)
 
 
 def get_odds_quality(prob: Optional[float]) -> tuple[str, str, str]:
     """
     Determine odds quality and return (category, css_class, description).
-    
+
     Logic:
     - Strong favorite (>75%): Excellent - clear market confidence
     - Slight favorite (60-75%): Good - moderate confidence
@@ -570,7 +576,7 @@ def page_list():
                 st.rerun()
     with col2:
         st.markdown(
-            f"<div style='text-align: center; padding: 0.5rem; color: #94a3b8;'>Page {p} of {pages}</div>",
+            f"<div style='text-align: center; padding: 0.5rem; color: #94a3b8;'>Page {p}/{pages}</div>",
             unsafe_allow_html=True)
     with col3:
         if p < pages:
@@ -582,7 +588,7 @@ def page_list():
 
 def page_detail():
     render_top_nav("detail")
-    
+
     kalshi = get_kalshi()
     event_ticker = qp_get("event", "")
     if not event_ticker:
@@ -993,7 +999,8 @@ def page_detail():
                 game_odds, home_team_name)
             if away_all_odds or home_all_odds:
                 with st.expander("📋 View All Sportsbook Odds"):
-                    st.caption("**All available odds for this game:**")
+                    st.caption(
+                        "**All available odds for this game:**")
 
                     # Create a dataframe for better display
                     odds_data = []
