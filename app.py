@@ -338,8 +338,8 @@ def pct(x: Optional[float]) -> str:
     return f"{x*100:.0f}%" if isinstance(x, (int, float)) else "—"
 
 
-def render_top_nav(current_page: str = "list"):
-    """Render top navigation menu"""
+def render_top_nav(current_page: str = "list", current_sport: str = "all"):
+    """Render top navigation menu with sport filters"""
     # Create navigation bar with columns
     nav_container = st.container()
     with nav_container:
@@ -349,12 +349,27 @@ def render_top_nav(current_page: str = "list"):
             st.markdown('<div style="font-size: 1.5rem; font-weight: 700; color: #f1f5f9; padding: 0.75rem 0;">📊 OddSense</div>', unsafe_allow_html=True)
 
         with col2:
-            if current_page != "list":
-                if st.button("🏠 All Markets", key="nav_home_button", use_container_width=False):
-                    qp_set(page="list")
-                    st.rerun()
-            else:
-                st.markdown('<div style="background: #6366f1; color: white; border: 1px solid #6366f1; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin-top: 0.5rem;">🏠 All Markets</div>', unsafe_allow_html=True)
+            # Create sport filter buttons
+            btn_cols = st.columns([1, 1, 1, 1, 1])
+            
+            sports = [
+                ("all", "🏠 All Markets"),
+                ("nfl", "🏈 NFL"),
+                ("nba", "🏀 NBA"),
+                ("mlb", "⚾ MLB"),
+                ("nhl", "🏒 NHL")
+            ]
+            
+            for idx, (sport_key, sport_label) in enumerate(sports):
+                with btn_cols[idx]:
+                    if current_page == "list" and current_sport == sport_key:
+                        # Active button
+                        st.markdown(f'<div style="background: #6366f1; color: white; border: 1px solid #6366f1; padding: 0.5rem 1rem; border-radius: 6px; text-align: center; font-weight: 600; font-size: 0.9rem;">{sport_label}</div>', unsafe_allow_html=True)
+                    else:
+                        # Inactive button
+                        if st.button(sport_label, key=f"nav_{sport_key}", use_container_width=True):
+                            qp_set(page="list", sport=sport_key)
+                            st.rerun()
 
         st.markdown('<hr style="margin: 1rem 0; border-color: #334155;">', unsafe_allow_html=True)
 
@@ -431,7 +446,8 @@ def pick_display_label_and_bid(w: dict) -> tuple[str, Optional[float]]:
 
 
 def page_list():
-    render_top_nav("list")
+    current_sport = qp_get("sport", "all")
+    render_top_nav("list", current_sport)
 
     with st.sidebar:
         st.subheader("Filters")
@@ -446,6 +462,25 @@ def page_list():
 
     kalshi = get_kalshi()
     events = kalshi.fetch_and_group_open_games()
+    
+    # Filter by sport if not "all"
+    if current_sport != "all":
+        sport_keywords = {
+            "nfl": ["nfl", "football"],
+            "nba": ["nba", "basketball"],
+            "mlb": ["mlb", "baseball"],
+            "nhl": ["nhl", "hockey"]
+        }
+        
+        keywords = sport_keywords.get(current_sport, [])
+        if keywords:
+            events = [
+                e for e in events 
+                if any(kw in (e.get("pretty_event") or "").lower() 
+                      or kw in e["home_team"].lower() 
+                      or kw in e["away_team"].lower() 
+                      for kw in keywords)
+            ]
 
     # Search
     q = (st.session_state.search or "").lower().strip()
@@ -562,7 +597,7 @@ def page_list():
 
         # Action button
         st.link_button("📊 View Details",
-                       f"?page=detail&event={ev['event_ticker']}",
+                       f"?page=detail&event={ev['event_ticker']}&sport={current_sport}",
                        use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1382,7 +1417,8 @@ def page_detail():
             st.markdown("### Facts (compact)")
             st.json(data.get("facts", {}))
 
-    st.link_button("⬅️ Back to list", "?page=list")
+    current_sport = qp_get("sport", "all")
+    st.link_button("⬅️ Back to list", f"?page=list&sport={current_sport}")
 
 
 def main():
