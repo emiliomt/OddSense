@@ -236,7 +236,8 @@ st.markdown("""
         border-radius: 8px;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+            unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -281,19 +282,22 @@ def get_odds_quality(prob: Optional[float]) -> tuple[str, str, str]:
     """
     if prob is None:
         return ("Unknown", "odds-neutral", "No data")
-    
+
     pct_val = prob * 100
-    
+
     if pct_val >= 75:
-        return ("Strong Favorite", "odds-excellent", f"Heavy favorite at {pct_val:.0f}%")
+        return ("Strong Favorite", "odds-excellent",
+                f"Heavy favorite at {pct_val:.0f}%")
     elif pct_val >= 60:
         return ("Favorite", "odds-good", f"Favored to win at {pct_val:.0f}%")
     elif pct_val >= 40:
         return ("Toss-Up", "odds-neutral", f"Close race at {pct_val:.0f}%")
     elif pct_val >= 25:
-        return ("Underdog", "odds-good", f"Underdog with value at {pct_val:.0f}%")
+        return ("Underdog", "odds-good",
+                f"Underdog with value at {pct_val:.0f}%")
     else:
-        return ("Long Shot", "odds-excellent", f"Upset potential at {pct_val:.0f}%")
+        return ("Long Shot", "odds-excellent",
+                f"Upset potential at {pct_val:.0f}%")
 
 
 def call_context(game_id: str, include_llm: bool = True) -> Optional[dict]:
@@ -387,17 +391,18 @@ def page_list():
     for ev in events[start:end]:
         w = ev.get("winner_primary", {}) or {}
         label, bid_val = pick_display_label_and_bid(w)
-        
+
         # Get odds quality
         quality_label, quality_class, quality_desc = get_odds_quality(bid_val)
-        
+
         # Determine card border color
         card_class = quality_class.replace("odds-", "market-card-")
-        
+
         # Create custom HTML card for better mobile UX
-        matchup = ev.get("pretty_event") or f"{ev['away_team']} @ {ev['home_team']}"
+        matchup = ev.get(
+            "pretty_event") or f"{ev['away_team']} @ {ev['home_team']}"
         prob_pct = f"{bid_val*100:.0f}%" if bid_val else "—"
-        
+
         # Calculate time left
         close_dt = ev.get('close_dt')
         time_left_str = ""
@@ -405,7 +410,7 @@ def page_list():
             now = datetime.now(timezone.utc)
             time_diff = close_dt - now
             hours_left = time_diff.total_seconds() / 3600
-            
+
             if hours_left > 48:
                 days_left = int(hours_left / 24)
                 time_left_str = f"{days_left}d"
@@ -413,28 +418,29 @@ def page_list():
                 time_left_str = f"{int(hours_left)}h"
             else:
                 time_left_str = "Closed"
-        
+
         # Format volume and open interest
         volume_24h = ev.get('volume_24h_sum', 0)
         volume_str = f"${volume_24h:,.0f}" if volume_24h >= 1000 else f"${volume_24h:.0f}"
-        
+
         open_interest = ev.get('open_interest_sum', 0)
         oi_str = f"{open_interest:,.0f}" if open_interest >= 1000 else f"{open_interest:.0f}"
-        
+
         # Fetch sportsbook odds for comparison
         sportsbook_str = ""
         away_team_name = ev.get("away_team", "")
         home_team_name = ev.get("home_team", "")
-        
+
         if away_team_name and home_team_name:
             try:
-                game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
+                game_odds = odds_api.find_game_by_teams(
+                    away_team_name, home_team_name)
                 if game_odds:
                     consensus = odds_api.get_market_consensus(game_odds)
                     if consensus:
                         # Determine which team the primary contract is for
                         subject_team = w.get('subject_team', '')
-                        
+
                         # Get sportsbook average for the same team
                         if subject_team == away_team_name and away_team_name in consensus:
                             avg_prob = consensus[away_team_name]
@@ -445,26 +451,29 @@ def page_list():
             except Exception:
                 # Silently fail - odds might not be available yet
                 pass
-        
+
         # Determine value class
-        if 'excellent' in quality_class or (bid_val and (bid_val >= 0.75 or bid_val <= 0.25)):
+        if 'excellent' in quality_class or (bid_val and (bid_val >= 0.75
+                                                         or bid_val <= 0.25)):
             value_class = 'strong'
         elif 'good' in quality_class:
             value_class = 'moderate'
         else:
             value_class = 'weak'
-        
+
         # Build metrics HTML
         time_metric = f'<span title="Time until market closes">⏱️ {time_left_str}</span>' if time_left_str else ''
         sportsbook_metric = f'<span title="Sportsbook consensus average">🎲 {sportsbook_str}</span>' if sportsbook_str else ''
-        
+
         # Build card HTML as a single line to avoid Streamlit parsing issues
         card_html = f'<div class="market-card {card_class}"><div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;"><div style="flex: 1;"><div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; color: #f1f5f9;">{matchup}</div><div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">{label}</div><div class="market-metrics"><span title="24-hour trading volume">📊 {volume_str}</span><span title="Open interest (total contracts)">📈 {oi_str}</span>{time_metric}{sportsbook_metric}</div></div><div style="text-align: right;"><div class="prob-badge {quality_class}">{prob_pct}</div><div class="value-indicator value-{value_class}">{quality_label}</div></div></div></div>'
-        
+
         st.markdown(card_html, unsafe_allow_html=True)
-        
+
         # Action button
-        st.link_button("📊 View Details", f"?page=detail&event={ev['event_ticker']}", use_container_width=True)
+        st.link_button("📊 View Details",
+                       f"?page=detail&event={ev['event_ticker']}",
+                       use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
     # Pager
@@ -476,7 +485,9 @@ def page_list():
                 qp_set(page="list")
                 st.rerun()
     with col2:
-        st.markdown(f"<div style='text-align: center; padding: 0.5rem; color: #94a3b8;'>Page {p} of {pages}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='text-align: center; padding: 0.5rem; color: #94a3b8;'>Page {p} of {pages}</div>",
+            unsafe_allow_html=True)
     with col3:
         if p < pages:
             if st.button("Next ➡️", use_container_width=True):
@@ -500,14 +511,14 @@ def page_detail():
 
     st.title(
         ev.get("pretty_event") or f"{ev['away_team']} at {ev['home_team']}")
-    
+
     # Enhanced event context
     close_dt = ev.get('close_dt')
     if close_dt:
         now = datetime.now(timezone.utc)
         time_diff = close_dt - now
         hours_left = time_diff.total_seconds() / 3600
-        
+
         if hours_left > 24:
             days_left = int(hours_left / 24)
             time_desc = f"Market closes in **{days_left} days** ({close_dt.strftime('%B %d, %Y at %I:%M %p UTC')})"
@@ -517,83 +528,80 @@ def page_detail():
             time_desc = f"Market closed {close_dt.strftime('%B %d, %Y at %I:%M %p UTC')}"
     else:
         time_desc = "Close time not available"
-    
+
     st.caption(time_desc)
 
     # Market Metrics Overview with explanations
     st.subheader("📊 Market Overview")
-    
+
     # Use single column on mobile for better stacking
     metric_cols = st.columns(3)
-    
+
     with metric_cols[0]:
-        st.metric(
-            "24h Volume",
-            f"${ev.get('volume_24h_sum', 0):,}",
-            help="Total dollar volume traded in the last 24 hours"
-        )
-    
+        st.metric("24h Volume",
+                  f"${ev.get('volume_24h_sum', 0):,}",
+                  help="Total dollar volume traded in the last 24 hours")
+
     with metric_cols[1]:
-        st.metric(
-            "Open Interest",
-            f"{ev.get('open_interest_sum', 0):,}",
-            help="Outstanding contracts (positions not yet closed)"
-        )
-    
+        st.metric("Open Interest",
+                  f"{ev.get('open_interest_sum', 0):,}",
+                  help="Outstanding contracts (positions not yet closed)")
+
     with metric_cols[2]:
         if close_dt:
-            hours_left = (close_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+            hours_left = (close_dt -
+                          datetime.now(timezone.utc)).total_seconds() / 3600
             if hours_left > 0:
-                st.metric(
-                    "Time Left",
-                    f"{int(hours_left)}h" if hours_left < 48 else f"{int(hours_left/24)}d",
-                    help="Time until market closes"
-                )
+                st.metric("Time Left",
+                          f"{int(hours_left)}h"
+                          if hours_left < 48 else f"{int(hours_left/24)}d",
+                          help="Time until market closes")
             else:
                 st.metric("Status", "Closed", help="Market has closed")
-    
+
     st.divider()
-    
+
     # AI-Generated Game Preview
     st.subheader("🤖 AI Game Preview")
     with st.spinner("Generating AI-powered game analysis..."):
         gemini = GeminiService()
         away_team_name = ev.get("away_team", "")
         home_team_name = ev.get("home_team", "")
-        
+
         # Get primary contract probability
         w_temp = ev.get("winner_primary", {}) or {}
         _, primary_prob = pick_display_label_and_bid(w_temp)
-        
+
         # Try to get sportsbook odds for context
         sportsbook_prob = None
         try:
             odds_api = OddsAPIService()
-            game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
+            game_odds = odds_api.find_game_by_teams(away_team_name,
+                                                    home_team_name)
             if game_odds:
                 consensus = odds_api.get_market_consensus(game_odds)
                 if consensus:
                     subject_team = w_temp.get('subject_team', '')
                     if subject_team == away_team_name and away_team_name in consensus:
-                        sportsbook_prob = consensus[away_team_name] / 100  # Convert percentage to decimal
+                        sportsbook_prob = consensus[
+                            away_team_name] / 100  # Convert percentage to decimal
                     elif subject_team == home_team_name and home_team_name in consensus:
-                        sportsbook_prob = consensus[home_team_name] / 100  # Convert percentage to decimal
+                        sportsbook_prob = consensus[
+                            home_team_name] / 100  # Convert percentage to decimal
         except Exception:
             pass
-        
+
         # Generate game date string
         game_date = None
         if close_dt:
             game_date = close_dt.strftime('%B %d, %Y')
-        
-        summary = gemini.generate_game_summary(
-            away_team=away_team_name,
-            home_team=home_team_name,
-            kalshi_prob=primary_prob,
-            sportsbook_prob=sportsbook_prob,
-            game_date=game_date
-        )
-        
+
+        summary = gemini.generate_game_summary(away_team=away_team_name,
+                                               home_team=home_team_name,
+                                               kalshi_prob=primary_prob,
+                                               sportsbook_prob=sportsbook_prob,
+                                               game_date=game_date)
+
         if summary:
             # Format the AI preview with better typography and spacing
             st.markdown(f"""
@@ -606,59 +614,68 @@ def page_detail():
                 ">
                     <div style="
                         color: white;
-                        font-size: 1.15rem;
-                        line-height: 1.8;
+                        font-size: 1.4rem;
+                        line-height: 1.1;
                         font-weight: 400;
                         letter-spacing: 0.3px;
                     ">
                         {summary.replace('. ', '.<br><br>')}
                     </div>
                 </div>
-            """, unsafe_allow_html=True)
+            """,
+                        unsafe_allow_html=True)
         else:
             st.warning("AI game preview unavailable. Check back soon!")
-    
+
     # Team Stat Leaders Section
     st.divider()
     st.subheader("⭐ Team Stat Leaders")
-    
+
     with st.expander("View Key Player Stats", expanded=False):
         cols = st.columns(2)
-        
+
         # Away team leaders
         with cols[0]:
             st.markdown(f"**{away_team_name}**")
-            away_leaders = espn.get_team_leaders(away_team_name, category='passing')
+            away_leaders = espn.get_team_leaders(away_team_name,
+                                                 category='passing')
             if away_leaders:
                 for leader in away_leaders[:3]:  # Top 3
-                    st.write(f"• **{leader.get('name')}** ({leader.get('position')}): {leader.get('value')}")
+                    st.write(
+                        f"• **{leader.get('name')}** ({leader.get('position')}): {leader.get('value')}"
+                    )
             else:
                 st.caption("Stats unavailable")
-        
+
         # Home team leaders
         with cols[1]:
             st.markdown(f"**{home_team_name}**")
-            home_leaders = espn.get_team_leaders(home_team_name, category='passing')
+            home_leaders = espn.get_team_leaders(home_team_name,
+                                                 category='passing')
             if home_leaders:
                 for leader in home_leaders[:3]:  # Top 3
-                    st.write(f"• **{leader.get('name')}** ({leader.get('position')}): {leader.get('value')}")
+                    st.write(
+                        f"• **{leader.get('name')}** ({leader.get('position')}): {leader.get('value')}"
+                    )
             else:
                 st.caption("Stats unavailable")
-    
+
     st.divider()
-    
+
     # Winner Market with Visual Indicators
     w = ev.get("winner_primary", {}) or {}
     label, bid_val = pick_display_label_and_bid(w)
-    
+
     # Get odds quality for visual indicator
     quality_label, quality_class, quality_desc = get_odds_quality(bid_val)
-    
+
     # Display probability badge and quality indicator
     if bid_val is not None:
-        st.markdown(f'<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;"><div class="prob-badge {quality_class}">{pct(bid_val)}</div><div class="value-indicator value-{"strong" if "excellent" in quality_class else "moderate" if "good" in quality_class else "weak"}">{quality_label}</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;"><div class="prob-badge {quality_class}">{pct(bid_val)}</div><div class="value-indicator value-{"strong" if "excellent" in quality_class else "moderate" if "good" in quality_class else "weak"}">{quality_label}</div></div>',
+            unsafe_allow_html=True)
         st.caption(f"**{label}** - {quality_desc}")
-    
+
     st.subheader("🏆 Winner Market")
     st.info(
         "**How to read this market:** "
@@ -666,7 +683,7 @@ def page_detail():
         "A bid of 60% means the market implies a 60% chance of that outcome. "
         "You can buy 'Yes' if you think the probability is higher, or 'No' if you think it's lower."
     )
-    
+
     grid = st.columns([5, 2, 3])
     grid[0].markdown("**Market**")
     grid[1].markdown("**Implied Probability**")
@@ -680,31 +697,31 @@ def page_detail():
     # Sportsbook Odds vs Prediction Market Comparison
     st.divider()
     st.subheader("📊 Sportsbook Odds vs OddSense Market")
-    
+
     # Initialize SportsGameOdds API service
     odds_api = OddsAPIService()
-    
+
     away_team_name = ev.get("away_team", "")
     home_team_name = ev.get("home_team", "")
-    
+
     # Try to fetch real-time betting odds from The Odds API
     with st.spinner("Fetching live betting odds from sportsbooks..."):
         game_odds = odds_api.find_game_by_teams(away_team_name, home_team_name)
-        
+
         if game_odds:
             st.info(
                 "**Comparing prediction markets to sportsbooks:** "
                 "See how the prediction market compares to traditional sportsbook odds. "
                 "Differences can reveal arbitrage opportunities or varying market confidence."
             )
-            
+
             # Get consensus across all sportsbooks
             consensus = odds_api.get_market_consensus(game_odds)
-            
+
             # Get prediction market probabilities for both teams
             away_kalshi_prob = None
             home_kalshi_prob = None
-            
+
             # Find winner contracts - collect all first, then assign
             winner_contracts = []
             for contract in ev.get('all_contracts', []):
@@ -713,7 +730,7 @@ def page_detail():
                 if 'winner' not in title.lower():
                     continue
                 winner_contracts.append(contract)
-            
+
             # Strategy 1: Try matching by team codes in event ticker
             event_ticker = ev.get('event_ticker', '')
             if event_ticker:
@@ -723,51 +740,60 @@ def page_detail():
                 # Last 2 codes are usually away, home
                 if len(codes) >= 2:
                     away_code, home_code = codes[-2], codes[-1]
-                    
+
                     # Match each winner contract to away or home
                     # Typical pattern: KXNFLGAME-25NOV09-ATL-IND-B-{TEAM}-WIN
                     # The team code appears near the end, after the event codes
                     for contract in winner_contracts:
                         ticker = (contract.get('ticker', '') or '').upper()
                         # Fallback chain: yes_bid -> last_price (for thin markets)
-                        prob = contract.get('yes_bid') or contract.get('last_price')
-                        
+                        prob = contract.get('yes_bid') or contract.get(
+                            'last_price')
+
                         # Look for pattern like -ATL-WIN or -ATL- near the end
                         # Split ticker into parts and check last few segments
                         ticker_parts = ticker.split('-')
-                        
+
                         # Check last 3 parts for team codes (before WIN suffix)
-                        relevant_parts = ticker_parts[-3:] if len(ticker_parts) >= 3 else ticker_parts
-                        
+                        relevant_parts = ticker_parts[-3:] if len(
+                            ticker_parts) >= 3 else ticker_parts
+
                         # Count occurrences in relevant parts only
                         away_in_end = away_code in relevant_parts
                         home_in_end = home_code in relevant_parts
-                        
+
                         if away_in_end and not home_in_end and away_kalshi_prob is None:
                             away_kalshi_prob = prob
                         elif home_in_end and not away_in_end and home_kalshi_prob is None:
                             home_kalshi_prob = prob
-            
+
             # Strategy 2: If still missing, try text matching
             if away_kalshi_prob is None or home_kalshi_prob is None:
                 for contract in winner_contracts:
                     if away_kalshi_prob is not None and home_kalshi_prob is not None:
                         break
-                    
+
                     title = contract.get('title', '') or ''
                     subtitle = contract.get('subtitle', '') or ''
                     full_text = f"{title} {subtitle}".lower()
-                    
+
                     # Fallback chain: yes_bid -> last_price (for thin markets)
-                    prob = contract.get('yes_bid') or contract.get('last_price')
-                    
+                    prob = contract.get('yes_bid') or contract.get(
+                        'last_price')
+
                     # Match team name parts
-                    away_parts = [p for p in away_team_name.lower().split() if len(p) > 2]
-                    home_parts = [p for p in home_team_name.lower().split() if len(p) > 2]
-                    
-                    away_matches = sum(1 for part in away_parts if part in full_text)
-                    home_matches = sum(1 for part in home_parts if part in full_text)
-                    
+                    away_parts = [
+                        p for p in away_team_name.lower().split() if len(p) > 2
+                    ]
+                    home_parts = [
+                        p for p in home_team_name.lower().split() if len(p) > 2
+                    ]
+
+                    away_matches = sum(1 for part in away_parts
+                                       if part in full_text)
+                    home_matches = sum(1 for part in home_parts
+                                       if part in full_text)
+
                     # Assign based on matches
                     if away_matches > home_matches and away_kalshi_prob is None:
                         away_kalshi_prob = prob
@@ -775,35 +801,36 @@ def page_detail():
                         home_kalshi_prob = prob
                     elif away_matches == home_matches and away_matches > 0:
                         # Tie - check for "Yes" in title to identify the team
-                        if '— yes' in full_text.lower() or 'yes' in subtitle.lower():
+                        if '— yes' in full_text.lower(
+                        ) or 'yes' in subtitle.lower():
                             # This is likely the primary team - assign to first missing
                             if away_kalshi_prob is None:
                                 away_kalshi_prob = prob
                             elif home_kalshi_prob is None:
                                 home_kalshi_prob = prob
-            
+
             # Strategy 3: Use winner_primary as fallback
             if away_kalshi_prob is None or home_kalshi_prob is None:
                 winner_primary = ev.get('winner_primary', {})
                 primary_team = winner_primary.get('subject_team', '')
                 primary_bid = winner_primary.get('yes_bid')
-                
+
                 if primary_bid is not None:
                     # Determine if primary is away or home
                     if primary_team == away_team_name and away_kalshi_prob is None:
                         away_kalshi_prob = primary_bid
                     elif primary_team == home_team_name and home_kalshi_prob is None:
                         home_kalshi_prob = primary_bid
-            
+
             # Derive complement if only one found
             if away_kalshi_prob is None and home_kalshi_prob is not None:
                 away_kalshi_prob = 1 - home_kalshi_prob
             elif home_kalshi_prob is None and away_kalshi_prob is not None:
                 home_kalshi_prob = 1 - away_kalshi_prob
-            
+
             # Display comparison table
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            
+
             with col1:
                 st.markdown("**Team**")
             with col2:
@@ -812,135 +839,154 @@ def page_detail():
                 st.markdown("**Sportsbook Avg**")
             with col4:
                 st.markdown("**Best Odds**")
-            
+
             # Away team row
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            
+
             with col1:
                 st.write(f"**{away_team_name}** (Away)")
-            
+
             with col2:
                 if away_kalshi_prob is not None:
                     st.metric("", f"{away_kalshi_prob*100:.1f}%")
                 else:
                     st.write("—")
-            
+
             with col3:
                 if consensus and away_team_name in consensus:
                     avg_prob = consensus[away_team_name]
                     st.metric("", f"{avg_prob:.1f}%")
                 else:
                     st.write("—")
-            
+
             with col4:
                 best = odds_api.get_best_odds(game_odds, away_team_name)
                 if best:
-                    st.metric("", f"{best['odds']:+d}", 
-                             help=f"{best['bookmaker']}: {best['probability']:.1f}%")
+                    st.metric(
+                        "",
+                        f"{best['odds']:+d}",
+                        help=f"{best['bookmaker']}: {best['probability']:.1f}%"
+                    )
                 else:
                     st.write("—")
-            
+
             # Home team row
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            
+
             with col1:
                 st.write(f"**{home_team_name}** (Home)")
-            
+
             with col2:
                 if home_kalshi_prob is not None:
                     st.metric("", f"{home_kalshi_prob*100:.1f}%")
                 else:
                     st.write("—")
-            
+
             with col3:
                 if consensus and home_team_name in consensus:
                     avg_prob = consensus[home_team_name]
                     st.metric("", f"{avg_prob:.1f}%")
                 else:
                     st.write("—")
-            
+
             with col4:
                 best = odds_api.get_best_odds(game_odds, home_team_name)
                 if best:
-                    st.metric("", f"{best['odds']:+d}",
-                             help=f"{best['bookmaker']}: {best['probability']:.1f}%")
+                    st.metric(
+                        "",
+                        f"{best['odds']:+d}",
+                        help=f"{best['bookmaker']}: {best['probability']:.1f}%"
+                    )
                 else:
                     st.write("—")
-            
+
             # Show available sportsbooks in an expander
-            away_all_odds = odds_api.get_all_bookmaker_odds(game_odds, away_team_name)
-            home_all_odds = odds_api.get_all_bookmaker_odds(game_odds, home_team_name)
+            away_all_odds = odds_api.get_all_bookmaker_odds(
+                game_odds, away_team_name)
+            home_all_odds = odds_api.get_all_bookmaker_odds(
+                game_odds, home_team_name)
             if away_all_odds or home_all_odds:
                 with st.expander("📋 View All Sportsbook Odds"):
                     st.caption("**All available odds for this game:**")
-                    
+
                     # Create a dataframe for better display
                     odds_data = []
-                    
+
                     # Process away team odds
                     for odd in away_all_odds:
                         odds_data.append({
-                            'Team': f"{away_team_name} (Away)",
-                            'Sportsbook': odd['bookmaker'],
-                            'Odds': f"{odd['odds']:+d}",
-                            'Win Prob': f"{odd['probability']:.1f}%"
+                            'Team':
+                            f"{away_team_name} (Away)",
+                            'Sportsbook':
+                            odd['bookmaker'],
+                            'Odds':
+                            f"{odd['odds']:+d}",
+                            'Win Prob':
+                            f"{odd['probability']:.1f}%"
                         })
-                    
+
                     # Process home team odds
                     for odd in home_all_odds:
                         odds_data.append({
-                            'Team': f"{home_team_name} (Home)",
-                            'Sportsbook': odd['bookmaker'],
-                            'Odds': f"{odd['odds']:+d}",
-                            'Win Prob': f"{odd['probability']:.1f}%"
+                            'Team':
+                            f"{home_team_name} (Home)",
+                            'Sportsbook':
+                            odd['bookmaker'],
+                            'Odds':
+                            f"{odd['odds']:+d}",
+                            'Win Prob':
+                            f"{odd['probability']:.1f}%"
                         })
-                    
+
                     if odds_data:
                         df = pd.DataFrame(odds_data)
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-                    
+                        st.dataframe(df,
+                                     use_container_width=True,
+                                     hide_index=True)
+
         else:
-            st.info("Live sportsbook odds not currently available for this game. Check back closer to game time!")
-    
+            st.info(
+                "Live sportsbook odds not currently available for this game. Check back closer to game time!"
+            )
+
     # Historical Accuracy Comparison with ESPN Data
     st.divider()
     st.subheader("🎯 Market Prediction vs Actual Result")
-    
+
     # Check if game has finished by looking at close_dt
     game_finished = False
     if close_dt:
         now = datetime.now(timezone.utc)
         game_finished = now > close_dt
-    
+
     if game_finished and bid_val is not None:
         st.info(
             "**Compare predictions to reality:** "
             "See how accurate the prediction market was by comparing the implied probability to the actual game result from ESPN."
         )
-        
+
         # Try to fetch ESPN game result
         with st.spinner("Fetching game result from ESPN..."):
             away_team_name = ev.get("away_team", "")
             home_team_name = ev.get("home_team", "")
-            
+
             # Determine which team this market is for
             # The label contains team name and either "— Yes" or "— No"
             labeled_team = None
             is_yes_contract = "— Yes" in label
             is_no_contract = "— No" in label
-            
+
             if away_team_name.lower() in label.lower():
                 labeled_team = "away"
             elif home_team_name.lower() in label.lower():
                 labeled_team = "home"
-            
+
             if labeled_team and close_dt:
                 game_result = espn.find_game_by_teams_and_date(
                     away_team=away_team_name,
                     home_team=home_team_name,
-                    game_date=close_dt
-                )
-                
+                    game_date=close_dt)
+
                 if game_result:
                     # For No contracts, the bet is on the OPPONENT of the labeled team
                     # For Yes contracts, the bet is on the labeled team
@@ -952,8 +998,7 @@ def page_detail():
                         comparison = espn.compare_to_kalshi_odds(
                             game_result=game_result,
                             kalshi_probability=bid_val,
-                            bet_on_team=bet_on_team
-                        )
+                            bet_on_team=bet_on_team)
                         comparison['contract_type'] = 'No'
                         comparison['labeled_team'] = labeled_team
                         # Calculate implied win probability for labeled team
@@ -964,46 +1009,52 @@ def page_detail():
                         comparison = espn.compare_to_kalshi_odds(
                             game_result=game_result,
                             kalshi_probability=bid_val,
-                            bet_on_team=bet_on_team
-                        )
+                            bet_on_team=bet_on_team)
                         comparison['contract_type'] = 'Yes'
-                    
+
                     if comparison.get('status') == 'incomplete':
                         st.warning(comparison.get('message'))
                     else:
                         # Display comparison results
                         col1, col2 = st.columns(2)
-                        
+
                         with col1:
                             # Show appropriate metric based on contract type
                             if comparison.get('contract_type') == 'No':
                                 # For No contracts, we're showing the opponent's win chance
                                 # Label shows team X with No contract at Y%
                                 # This means market gives opponent (100-Y)% chance to win
-                                labeled_team_name = away_team_name if comparison.get('labeled_team') == 'away' else home_team_name
+                                labeled_team_name = away_team_name if comparison.get(
+                                    'labeled_team'
+                                ) == 'away' else home_team_name
                                 opponent_name = comparison.get('team_name')
-                                implied_labeled_team_win = comparison.get('implied_win_probability', 0)
-                                
+                                implied_labeled_team_win = comparison.get(
+                                    'implied_win_probability', 0)
+
                                 st.metric(
                                     "Market Prediction",
                                     comparison.get('kalshi_percentage'),
-                                    help=f"No contract on {labeled_team_name} at {pct(bid_val)} implies {opponent_name} has {comparison.get('kalshi_percentage')} chance to win"
+                                    help=
+                                    f"No contract on {labeled_team_name} at {pct(bid_val)} implies {opponent_name} has {comparison.get('kalshi_percentage')} chance to win"
                                 )
                             else:
                                 st.metric(
                                     "Market Prediction",
                                     comparison.get('kalshi_percentage'),
-                                    help=f"Market was {comparison.get('confidence_level')} that {comparison.get('team_name')} would win"
+                                    help=
+                                    f"Market was {comparison.get('confidence_level')} that {comparison.get('team_name')} would win"
                                 )
-                        
+
                         with col2:
-                            result_emoji = "✅" if comparison.get('bet_won') else "❌"
+                            result_emoji = "✅" if comparison.get(
+                                'bet_won') else "❌"
                             st.metric(
                                 "Actual Result",
                                 f"{result_emoji} {'Won' if comparison.get('bet_won') else 'Lost'}",
-                                help=f"Final score: {comparison.get('final_score', {}).get('away')} - {comparison.get('final_score', {}).get('home')}"
+                                help=
+                                f"Final score: {comparison.get('final_score', {}).get('away')} - {comparison.get('final_score', {}).get('home')}"
                             )
-                        
+
                         # Show analysis message
                         message = comparison.get('message', '')
                         if comparison.get('bet_won'):
@@ -1014,16 +1065,19 @@ def page_detail():
                             else:
                                 st.info(message)
                 else:
-                    st.warning(f"Could not find ESPN game data for {away_team_name} @ {home_team_name}")
+                    st.warning(
+                        f"Could not find ESPN game data for {away_team_name} @ {home_team_name}"
+                    )
             else:
                 st.info("Unable to determine which team this market is for.")
     else:
-        st.info("Historical comparison will be available after the game finishes.")
+        st.info(
+            "Historical comparison will be available after the game finishes.")
 
     # Historical Price Chart
     st.divider()
     st.subheader("📈 Historical Price Movement")
-    
+
     ticker = w.get("ticker")
     if ticker:
         st.info(
@@ -1032,20 +1086,22 @@ def page_detail():
             "Rising prices indicate growing confidence in the outcome, while falling prices suggest decreasing confidence. "
             "Watch for trends and sudden movements that might indicate new information entering the market."
         )
-        
+
         import plotly.graph_objects as go
-        
+
         # Fetch candlestick data
         candlesticks = kalshi.get_market_candlesticks(
             series_ticker=kalshi.SERIES_TICKER_GAME,
             ticker=ticker,
             period_interval=60  # 1-hour candles
         )
-        
+
         if candlesticks and len(candlesticks) > 0:
             # Filter out candlesticks with None close prices
-            valid_candles = [c for c in candlesticks if c.get("close") is not None]
-            
+            valid_candles = [
+                c for c in candlesticks if c.get("close") is not None
+            ]
+
             if valid_candles:
                 timestamps = [c["timestamp"] for c in valid_candles]
                 closes = [c["close"] for c in valid_candles]
@@ -1053,93 +1109,101 @@ def page_detail():
             else:
                 # No valid data
                 timestamps, closes, volumes = [], [], []
-            
+
             # Calculate trend
-            if len(closes) >= 2 and closes[0] is not None and closes[-1] is not None:
+            if len(closes
+                   ) >= 2 and closes[0] is not None and closes[-1] is not None:
                 price_change = closes[-1] - closes[0]
-                pct_change = (price_change / closes[0] * 100) if closes[0] > 0 else 0
-                
+                pct_change = (price_change / closes[0] *
+                              100) if closes[0] > 0 else 0
+
                 if abs(pct_change) > 5:
                     trend_emoji = "📈" if pct_change > 0 else "📉"
                     trend_text = f"{trend_emoji} **Market trend:** {'Rising' if pct_change > 0 else 'Falling'} ({pct_change:+.1f}% over the period shown)"
                 else:
                     trend_text = "➡️ **Market trend:** Stable (minimal movement)"
-                
+
                 st.caption(trend_text)
-            
+
             # Create price chart only if we have valid data
             if len(closes) > 0:
                 fig = go.Figure()
-                
-                fig.add_trace(go.Scatter(
-                    x=timestamps,
-                    y=closes,
-                    mode='lines',
-                    name='Close Price',
-                    line=dict(color='#6366f1', width=3),
-                    hovertemplate='<b>Time:</b> %{x}<br><b>Price:</b> $%{y:.2f}<extra></extra>'
-                ))
-                
-                fig.update_layout(
-                    title="Price Over Time (Hourly)",
-                    xaxis_title="Time",
-                    yaxis_title="Price (Probability)",
-                    yaxis=dict(tickformat='.0%', range=[0, 1]),
-                    hovermode='x unified',
-                    height=400,
-                    template='plotly_dark',
-                    paper_bgcolor='#1e293b',
-                    plot_bgcolor='#1e293b',
-                    font=dict(color='#f1f5f9')
-                )
-                
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=timestamps,
+                        y=closes,
+                        mode='lines',
+                        name='Close Price',
+                        line=dict(color='#6366f1', width=3),
+                        hovertemplate=
+                        '<b>Time:</b> %{x}<br><b>Price:</b> $%{y:.2f}<extra></extra>'
+                    ))
+
+                fig.update_layout(title="Price Over Time (Hourly)",
+                                  xaxis_title="Time",
+                                  yaxis_title="Price (Probability)",
+                                  yaxis=dict(tickformat='.0%', range=[0, 1]),
+                                  hovermode='x unified',
+                                  height=400,
+                                  template='plotly_dark',
+                                  paper_bgcolor='#1e293b',
+                                  plot_bgcolor='#1e293b',
+                                  font=dict(color='#f1f5f9'))
+
                 st.plotly_chart(fig, use_container_width=True)
-                
+
                 # Volume chart
                 if len(volumes) > 0 and max(volumes) > 0:
                     fig_vol = go.Figure()
-                    fig_vol.add_trace(go.Bar(
-                        x=timestamps,
-                        y=volumes,
-                        name='Volume',
-                        marker_color='#10b981',
-                        hovertemplate='<b>Time:</b> %{x}<br><b>Volume:</b> %{y}<extra></extra>'
-                    ))
-                    
-                    fig_vol.update_layout(
-                        title="Trading Volume Over Time",
-                        xaxis_title="Time",
-                        yaxis_title="Volume",
-                        height=300,
-                        template='plotly_dark',
-                        paper_bgcolor='#1e293b',
-                        plot_bgcolor='#1e293b',
-                        font=dict(color='#f1f5f9')
-                    )
-                    
+                    fig_vol.add_trace(
+                        go.Bar(
+                            x=timestamps,
+                            y=volumes,
+                            name='Volume',
+                            marker_color='#10b981',
+                            hovertemplate=
+                            '<b>Time:</b> %{x}<br><b>Volume:</b> %{y}<extra></extra>'
+                        ))
+
+                    fig_vol.update_layout(title="Trading Volume Over Time",
+                                          xaxis_title="Time",
+                                          yaxis_title="Volume",
+                                          height=300,
+                                          template='plotly_dark',
+                                          paper_bgcolor='#1e293b',
+                                          plot_bgcolor='#1e293b',
+                                          font=dict(color='#f1f5f9'))
+
                     with st.expander("📊 View Volume History"):
-                        st.caption("**Volume spikes** can indicate important news or events affecting trader sentiment.")
+                        st.caption(
+                            "**Volume spikes** can indicate important news or events affecting trader sentiment."
+                        )
                         st.plotly_chart(fig_vol, use_container_width=True)
             else:
-                st.info("Historical price data contains no valid close prices. This can happen for newly created markets.")
+                st.info(
+                    "Historical price data contains no valid close prices. This can happen for newly created markets."
+                )
         else:
-            st.info("Historical price data not yet available for this market. Check back after some trading activity.")
-    
+            st.info(
+                "Historical price data not yet available for this market. Check back after some trading activity."
+            )
+
     # Order Book (Collapsed for mobile)
     st.divider()
-    
+
     with st.expander("📖 Current Order Book", expanded=False):
         if ticker:
             st.info(
                 "The order book shows pending buy/sell orders. "
                 "'Yes' orders bet the outcome happens; 'No' orders bet it doesn't."
             )
-            
+
             orderbook = kalshi.get_market_orderbook(ticker)
-            
+
             if orderbook:
                 col_yes, col_no = st.columns(2)
-                
+
                 with col_yes:
                     st.markdown("**YES Orders**")
                     yes_orders = orderbook.get("yes", [])
@@ -1148,14 +1212,12 @@ def page_detail():
                         if not yes_df.empty and "price" in yes_df.columns and "size" in yes_df.columns:
                             yes_display = yes_df[["price", "size"]].copy()
                             yes_display.columns = ["Price", "Size"]
-                            st.dataframe(
-                                yes_display,
-                                hide_index=True,
-                                use_container_width=True
-                            )
+                            st.dataframe(yes_display,
+                                         hide_index=True,
+                                         use_container_width=True)
                     else:
                         st.caption("No YES orders")
-                
+
                 with col_no:
                     st.markdown("**NO Orders**")
                     no_orders = orderbook.get("no", [])
@@ -1164,23 +1226,23 @@ def page_detail():
                         if not no_df.empty and "price" in no_df.columns and "size" in no_df.columns:
                             no_display = no_df[["price", "size"]].copy()
                             no_display.columns = ["Price", "Size"]
-                            st.dataframe(
-                                no_display,
-                                hide_index=True,
-                                use_container_width=True
-                            )
+                            st.dataframe(no_display,
+                                         hide_index=True,
+                                         use_container_width=True)
                     else:
                         st.caption("No NO orders")
             else:
                 st.info("Order book data not available.")
         else:
             st.info("No ticker available for order book.")
-    
+
     st.divider()
-    
+
     with st.expander("📋 All Event Contracts", expanded=False):
-        st.caption("Complete list of all betting contracts for this game, including player props and other markets.")
-        
+        st.caption(
+            "Complete list of all betting contracts for this game, including player props and other markets."
+        )
+
         df = pd.DataFrame(ev["all_contracts"])
         keep = [
             c for c in [
