@@ -28,6 +28,75 @@ st.markdown("""
         background-color: #0f172a;
     }
     
+    /* Top Navigation Menu */
+    .top-nav {
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1.5rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .nav-brand {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .nav-links {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .nav-link {
+        background: transparent;
+        border: 1px solid #334155;
+        color: #94a3b8;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    
+    .nav-link:hover {
+        background: #334155;
+        color: #f1f5f9;
+        border-color: #475569;
+    }
+    
+    .nav-link.active {
+        background: #6366f1;
+        color: white;
+        border-color: #6366f1;
+    }
+    
+    @media (max-width: 768px) {
+        .top-nav {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .nav-links {
+            width: 100%;
+        }
+        
+        .nav-link {
+            flex: 1;
+            text-align: center;
+        }
+    }
+    
     /* Mobile-first responsive design */
     @media (max-width: 768px) {
         .stApp {
@@ -269,6 +338,21 @@ def pct(x: Optional[float]) -> str:
     return f"{x*100:.0f}%" if isinstance(x, (int, float)) else "—"
 
 
+def render_top_nav(current_page: str = "list"):
+    """Render top navigation menu"""
+    list_active = "active" if current_page == "list" else ""
+    
+    nav_html = f"""
+    <div class="top-nav">
+        <a href="?page=list" class="nav-brand">📊 OddSense</a>
+        <div class="nav-links">
+            <a href="?page=list" class="nav-link {list_active}">🏠 All Markets</a>
+        </div>
+    </div>
+    """
+    st.markdown(nav_html, unsafe_allow_html=True)
+
+
 def get_odds_quality(prob: Optional[float]) -> tuple[str, str, str]:
     """
     Determine odds quality and return (category, css_class, description).
@@ -341,7 +425,7 @@ def pick_display_label_and_bid(w: dict) -> tuple[str, Optional[float]]:
 
 
 def page_list():
-    st.title("📊 OddSense")
+    render_top_nav("list")
 
     with st.sidebar:
         st.subheader("Filters")
@@ -497,6 +581,8 @@ def page_list():
 
 
 def page_detail():
+    render_top_nav("detail")
+    
     kalshi = get_kalshi()
     event_ticker = qp_get("event", "")
     if not event_ticker:
