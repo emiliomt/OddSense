@@ -309,9 +309,30 @@ st.markdown("""
             unsafe_allow_html=True)
 
 
-@st.cache_resource
-def get_kalshi() -> KalshiService:
-    return KalshiService()
+# Manual per-sport service caching to avoid Streamlit cache_resource issues
+_SERVICE_CACHE = {
+    "kalshi": {},
+    "odds_api": {},
+    "espn": {}
+}
+
+def get_kalshi(sport: str = "nfl") -> KalshiService:
+    """Get cached KalshiService for a specific sport."""
+    if sport not in _SERVICE_CACHE["kalshi"]:
+        _SERVICE_CACHE["kalshi"][sport] = KalshiService(sport=sport)
+    return _SERVICE_CACHE["kalshi"][sport]
+
+def get_odds_api(sport: str = "nfl") -> OddsAPIService:
+    """Get cached OddsAPIService for a specific sport."""
+    if sport not in _SERVICE_CACHE["odds_api"]:
+        _SERVICE_CACHE["odds_api"][sport] = OddsAPIService(sport=sport)
+    return _SERVICE_CACHE["odds_api"][sport]
+
+def get_espn(sport: str = "nfl") -> ESPNService:
+    """Get cached ESPNService for a specific sport."""
+    if sport not in _SERVICE_CACHE["espn"]:
+        _SERVICE_CACHE["espn"][sport] = ESPNService(sport=sport)
+    return _SERVICE_CACHE["espn"][sport]
 
 
 def qp_get(name: str, default: str = "list") -> str:
@@ -446,6 +467,8 @@ def pick_display_label_and_bid(w: dict) -> tuple[str, Optional[float]]:
 
 
 def page_list():
+    from sport_config import get_all_sports, is_valid_sport
+    
     current_sport = qp_get("sport", "all")
     render_top_nav("list", current_sport)
 
@@ -460,27 +483,31 @@ def page_list():
             step=2,
             value=st.session_state.events_per_page)
 
-    kalshi = get_kalshi()
-    events = kalshi.fetch_and_group_open_games()
-    
-    # Filter by sport if not "all"
-    if current_sport != "all":
-        sport_keywords = {
-            "nfl": ["nfl", "football"],
-            "nba": ["nba", "basketball"],
-            "mlb": ["mlb", "baseball"],
-            "nhl": ["nhl", "hockey"]
-        }
-        
-        keywords = sport_keywords.get(current_sport, [])
-        if keywords:
-            events = [
-                e for e in events 
-                if any(kw in (e.get("pretty_event") or "").lower() 
-                      or kw in e["home_team"].lower() 
-                      or kw in e["away_team"].lower() 
-                      for kw in keywords)
-            ]
+    # Fetch events based on selected sport
+    if current_sport == "all":
+        # Aggregate events from all sports
+        events = []
+        for sport in get_all_sports():
+            try:
+                kalshi = get_kalshi(sport)
+                sport_events = kalshi.fetch_and_group_open_games()
+                # Annotate events with sport metadata
+                for ev in sport_events:
+                    ev["_sport"] = sport
+                events.extend(sport_events)
+            except Exception as e:
+                st.warning(f"Error fetching {sport.upper()} markets: {e}")
+    else:
+        # Fetch events for specific sport
+        if is_valid_sport(current_sport):
+            kalshi = get_kalshi(current_sport)
+            events = kalshi.fetch_and_group_open_games()
+            # Annotate events with sport metadata
+            for ev in events:
+                ev["_sport"] = current_sport
+        else:
+            st.error(f"Invalid sport: {current_sport}")
+            events = []
 
     # Search
     q = (st.session_state.search or "").lower().strip()
@@ -509,11 +536,11 @@ def page_list():
 
     st.caption(f"📊 {total} games • Page {p}/{pages}")
 
-    # Initialize SportsGameOdds API service for sportsbook data
-    odds_api = OddsAPIService()
-
     # Mobile-optimized market cards
     for ev in events[start:end]:
+        # Get sport-specific odds API service for this event
+        event_sport = ev.get("_sport", "nfl")
+        odds_api = get_odds_api(event_sport)
         w = ev.get("winner_primary", {}) or {}
         label, bid_val = pick_display_label_and_bid(w)
 
@@ -595,9 +622,10 @@ def page_list():
 
         st.markdown(card_html, unsafe_allow_html=True)
 
-        # Action button
+        # Action button - use event's actual sport, not current filter
+        event_sport = ev.get("_sport", current_sport)
         st.link_button("📊 View Details",
-                       f"?page=detail&event={ev['event_ticker']}&sport={current_sport}",
+                       f"?page=detail&event={ev['event_ticker']}&sport={event_sport}",
                        use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -622,14 +650,41 @@ def page_list():
 
 
 def page_detail():
-    render_top_nav("detail")
-
-    kalshi = get_kalshi()
+    from sport_config import is_valid_sport, get_all_sports
+    
+    # Get event ticker first
     event_ticker = qp_get("event", "")
     if not event_ticker:
         st.warning("No event selected.")
         return
+    
+    # Get current sport from query params with validation
+    current_sport = qp_get("sport", "nfl")
+    
+    # If sport is invalid (like "all" from legacy links), find the event's actual sport
+    if not is_valid_sport(current_sport):
+        # Try to find the event in each sport
+        found_sport = None
+        for sport in get_all_sports():
+            try:
+                kalshi = get_kalshi(sport)
+                events = kalshi.fetch_and_group_open_games()
+                if any(e["event_ticker"] == event_ticker for e in events):
+                    found_sport = sport
+                    break
+            except Exception:
+                continue
+        
+        if found_sport:
+            current_sport = found_sport
+        else:
+            st.error(f"Event not found in any sport. Invalid sport filter: {qp_get('sport', 'nfl')}")
+            return
+    
+    render_top_nav("detail", current_sport)
 
+    # Get sport-specific services
+    kalshi = get_kalshi(current_sport)
     events = kalshi.fetch_and_group_open_games()
     ev = next((e for e in events if e["event_ticker"] == event_ticker), None)
     if not ev:
@@ -702,7 +757,7 @@ def page_detail():
         # Try to get sportsbook odds for context
         sportsbook_prob = None
         try:
-            odds_api = OddsAPIService()
+            odds_api = get_odds_api(current_sport)
             game_odds = odds_api.find_game_by_teams(away_team_name,
                                                     home_team_name)
             if game_odds:
@@ -759,13 +814,20 @@ def page_detail():
     st.subheader("⭐ Team Stat Leaders")
 
     with st.expander("View Key Player Stats", expanded=False):
+        from sport_config import get_sport_config
+        
+        # Get sport-specific stat category (first one from config)
+        sport_config = get_sport_config(current_sport)
+        stat_category = sport_config.get("stat_categories", ["passing"])[0]
+        
         cols = st.columns(2)
+        espn_service = get_espn(current_sport)
 
         # Away team leaders
         with cols[0]:
             st.markdown(f"**{away_team_name}**")
-            away_leaders = espn.get_team_leaders(away_team_name,
-                                                 category='passing')
+            away_leaders = espn_service.get_team_leaders(away_team_name,
+                                                         category=stat_category)
             if away_leaders:
                 for leader in away_leaders[:3]:  # Top 3
                     st.write(
@@ -777,8 +839,8 @@ def page_detail():
         # Home team leaders
         with cols[1]:
             st.markdown(f"**{home_team_name}**")
-            home_leaders = espn.get_team_leaders(home_team_name,
-                                                 category='passing')
+            home_leaders = espn_service.get_team_leaders(home_team_name,
+                                                         category=stat_category)
             if home_leaders:
                 for leader in home_leaders[:3]:  # Top 3
                     st.write(
