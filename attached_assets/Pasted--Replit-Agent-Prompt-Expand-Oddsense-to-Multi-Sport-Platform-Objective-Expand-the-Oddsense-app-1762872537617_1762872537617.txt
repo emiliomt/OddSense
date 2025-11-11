@@ -1,0 +1,246 @@
+# Replit Agent Prompt: Expand Oddsense to Multi-Sport Platform
+
+## Objective
+Expand the Oddsense app from NFL-only to support multiple sports (NFL, NBA, NHL, Soccer/Football) with consistent data display and user experience across all sports.
+
+## Current State
+- App currently only supports NFL games via Kalshi API (`series_ticker=KXNFLGAME`)
+- Uses The Odds API for NFL sportsbook odds (`americanfootball_nfl`)
+- ESPN API integration for NFL player stats and game data
+- Google Gemini AI generates NFL-specific game previews
+- Team normalization and display logic is NFL-specific
+
+## Required Changes
+
+### 1. API Service Layer Updates
+
+#### A. Kalshi Service (`kalshi_service.py`)
+**Task**: Expand to support multiple sports series tickers
+- Add new series ticker parameters:
+  - `KXNFLGAME` (existing NFL)
+  - `KXNBAGAME` (NBA games)
+  - `KXNHLGAME` (NHL games) 
+  - Soccer/Football series (research appropriate ticker)
+- Update `get_markets()` method to accept sport parameter
+- Create sport-agnostic market normalization that works for all sports
+- Update team name resolution dictionaries for each sport
+- Implement sport-specific category mapping (e.g., "Passing Yards" for NFL, "Points" for NBA, "Goals" for NHL/Soccer)
+
+#### B. The Odds API Service (`odds_api_service.py`)
+**Task**: Add multi-sport support
+- Current endpoint: `americanfootball_nfl`
+- Add new sport endpoints:
+  - `basketball_nba` (NBA)
+  - `icehockey_nhl` (NHL)
+  - `soccer_*` (various soccer leagues - recommend starting with major leagues like EPL, Champions League)
+- Update `get_nfl_odds()` → rename to `get_odds(sport)` with sport parameter
+- Create separate team normalization dictionaries for each sport:
+  - `NBA_TEAMS`: 30 NBA teams with city/nickname variations
+  - `NHL_TEAMS`: 32 NHL teams with city/nickname variations
+  - `SOCCER_TEAMS`: Teams from major leagues (can start with one league)
+- Update `_normalize_team_name()` to use sport-specific mappings
+
+#### C. ESPN Service (`espn_service.py`)
+**Task**: Extend to support multiple sports
+- Current base URL: `http://site.api.espn.com/apis/site/v2/sports/football/nfl`
+- Add sport-specific base URLs:
+  - NBA: `.../sports/basketball/nba`
+  - NHL: `.../sports/hockey/nhl`
+  - Soccer: `.../sports/soccer/[league]` (e.g., `eng.1` for Premier League)
+- Update all methods to accept `sport` parameter
+- Adapt `get_team_leaders()` for sport-specific stats:
+  - NFL: passing/rushing/receiving
+  - NBA: points/rebounds/assists
+  - NHL: goals/assists/points
+  - Soccer: goals/assists/saves
+- Update `get_scoreboard()`, `get_game_summary()`, `get_team_roster()` for multi-sport
+
+#### D. AI Services (`gemini_service.py`, `openai_service.py`)
+**Task**: Make AI prompts sport-aware
+- Update `generate_game_preview()` to generate sport-appropriate analysis:
+  - NFL: QB play, defensive matchups, running game
+  - NBA: star players, pace, three-point shooting
+  - NHL: goaltending, power play, defensive systems
+  - Soccer: formations, key attackers/defenders, set pieces
+- Pass sport context to AI prompts
+- Adjust player mention format for each sport (e.g., position abbreviations differ)
+
+### 2. Frontend Updates (`app.py`)
+
+#### A. Navigation Enhancement
+**Task**: Sport filter is partially implemented, make it fully functional
+- Current nav shows: All Markets, NFL, NBA, MLB, NHL
+- Note: MLB is shown but not requested - remove or implement
+- Add Soccer option instead of MLB (align with requirements)
+- Update `render_top_nav()` to:
+  - Pass selected sport to data fetching functions
+  - Store sport selection in session state
+  - Update query parameters correctly
+
+#### B. Data Fetching Layer
+**Task**: Make all data fetching sport-aware
+- Update `fetch_markets()` to:
+  - Accept sport parameter from nav selection
+  - Pass correct series ticker to Kalshi based on sport
+  - Route to appropriate odds API endpoint
+  - Fetch sport-specific ESPN data
+- Create sport-specific display logic for game cards
+- Ensure pagination works correctly for each sport
+
+#### C. Market Display Cards
+**Task**: Adapt card rendering for different sports
+- Current implementation shows team vs team format (works for all sports)
+- Update probability badges to show sport-appropriate context
+- Adjust odds quality assessment for each sport (different market characteristics)
+- Ensure game timing displays work for each sport (different game lengths, periods vs quarters vs halves)
+
+#### D. Detail Pages
+**Task**: Sport-specific detail view enhancements
+- Update player stats section for each sport:
+  - NFL: QB/RB/WR stats (current implementation)
+  - NBA: PTS/REB/AST leaders
+  - NHL: G/A/PTS leaders  
+  - Soccer: Goals/Assists/Saves leaders
+- Adapt AI game preview section for sport context
+- Show sport-appropriate historical data and charts
+- Update sportsbook odds comparison table labels for clarity
+
+### 3. Configuration & Constants
+
+#### A. Create Sport Configuration File
+**Task**: Centralize sport-specific settings
+- Create new file: `sport_config.py`
+- Define for each sport:
+  ```python
+  SPORTS_CONFIG = {
+      "nfl": {
+          "display_name": "NFL",
+          "icon": "🏈",
+          "kalshi_series": "KXNFLGAME",
+          "odds_api_key": "americanfootball_nfl",
+          "espn_sport": "football",
+          "espn_league": "nfl",
+          "stat_categories": ["passing", "rushing", "receiving"],
+          "position_labels": ["QB", "RB", "WR", "TE", "DEF"]
+      },
+      "nba": {
+          "display_name": "NBA",
+          "icon": "🏀",
+          "kalshi_series": "KXNBAGAME",
+          "odds_api_key": "basketball_nba",
+          "espn_sport": "basketball",
+          "espn_league": "nba",
+          "stat_categories": ["points", "rebounds", "assists"],
+          "position_labels": ["PG", "SG", "SF", "PF", "C"]
+      },
+      # Add NHL and Soccer similarly
+  }
+  ```
+- Import and use this config throughout the application
+
+### 4. Data Models & Type Safety
+
+#### A. Add Type Hints for Sport Parameter
+**Task**: Ensure type safety
+- Create sport enum or literal type:
+  ```python
+  from typing import Literal
+  SportType = Literal["nfl", "nba", "nhl", "soccer"]
+  ```
+- Update function signatures throughout to use SportType
+- Add validation for sport parameter values
+
+### 5. Testing & Validation
+
+#### A. Test Each Sport Individually
+**Task**: Verify functionality for each sport
+- Test navigation between sports
+- Verify data loads correctly for each sport
+- Check team name normalization works
+- Validate odds comparison displays properly
+- Ensure AI previews generate appropriate content
+- Test player stats section for each sport
+
+#### B. Edge Cases
+**Task**: Handle missing or incomplete data
+- Add graceful fallbacks when Kalshi doesn't have markets for a sport
+- Handle cases where The Odds API doesn't have odds for certain games
+- Display appropriate messages when ESPN data is unavailable
+- Ensure app doesn't crash when switching between sports with different data availability
+
+### 6. UI/UX Improvements
+
+#### A. Sport-Specific Branding
+**Task**: Add visual differentiation
+- Use sport icons consistently (🏈 🏀 🏒 ⚽)
+- Consider subtle color themes per sport (optional)
+- Update page titles to show current sport
+- Add sport context to empty states and error messages
+
+#### B. Filtering & Sorting
+**Task**: Add sport-aware filters
+- Allow filtering by date/time within each sport
+- Sort options appropriate to each sport
+- Consider adding league filters for soccer (Premier League, La Liga, etc.)
+
+### 7. Documentation Updates
+
+#### A. Update README and Documentation
+**Task**: Document multi-sport functionality
+- Update project overview in replit.md
+- Document new API endpoints and parameters
+- Add examples for each sport
+- Update environment variable documentation if needed
+
+## Implementation Priority
+
+### Phase 1: Core Infrastructure (HIGH PRIORITY)
+1. Create `sport_config.py` with sport configurations
+2. Update Kalshi service for multi-sport support
+3. Update The Odds API service for multi-sport support
+4. Make navigation fully functional with sport filtering
+
+### Phase 2: Data Integration (HIGH PRIORITY)  
+5. Extend ESPN service for NBA, NHL, Soccer
+6. Update data fetching layer in app.py
+7. Add sport-specific team normalization
+
+### Phase 3: Display & AI (MEDIUM PRIORITY)
+8. Adapt market cards for each sport
+9. Update AI services for sport-aware previews
+10. Create sport-specific detail pages
+
+### Phase 4: Polish (LOWER PRIORITY)
+11. Add comprehensive error handling
+12. Implement testing for each sport
+13. Update documentation
+
+## Expected Outcome
+After implementation, users should be able to:
+- Switch between NFL, NBA, NHL, and Soccer using the navigation
+- See markets, odds, and predictions for any supported sport
+- View sport-appropriate player statistics
+- Receive AI-generated previews tailored to each sport
+- Compare sportsbook odds across all sports
+- Experience consistent UI/UX regardless of sport selected
+
+## Technical Constraints
+- Maintain dark mode aesthetic and existing design system
+- Keep 5-minute caching for API calls to stay within rate limits
+- Ensure mobile-responsive design works for all sports
+- Preserve existing functionality for NFL while adding new sports
+
+## API Documentation References
+- Kalshi API: https://trading-api.readme.io/reference/getting-started
+- The Odds API: https://the-odds-api.com/liveapi/guides/v4/
+- ESPN API: Unofficial public API (document endpoints as discovered)
+
+## Questions to Resolve
+1. Which soccer leagues to support initially? (Recommend: Premier League, Champions League)
+2. Should we implement MLB instead of Soccer? (Current nav shows MLB but requirements say Soccer)
+3. Do we need separate handling for international soccer matches vs league games?
+4. Should stat categories be customizable per user preference?
+
+---
+
+**Note to Replit Agent**: Please implement these changes systematically, testing each sport as you go. Start with Phase 1 core infrastructure, then add one sport at a time (suggest starting with NBA as it's most similar to NFL in terms of season structure). Commit changes frequently and provide status updates at each phase completion.
