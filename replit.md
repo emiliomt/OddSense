@@ -1,10 +1,23 @@
 # Overview
 
-This project is an NFL prediction markets explorer built with Streamlit, integrating with the Kalshi prediction market API, The Odds API for real-time sportsbook betting odds, ESPN's public API for historical game data and player statistics, Google Gemini AI for game previews with player insights, and OpenAI for AI-powered market insights. It displays markets in a hierarchical structure, featuring automatic categorization, team name normalization, AI-generated game analysis with player highlights, multi-sportsbook odds comparison, and historical accuracy comparisons. The application aims to provide users with a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
+OddSense is a multi-sport prediction markets explorer built with Streamlit, integrating with the Kalshi prediction market API, The Odds API for real-time sportsbook betting odds, ESPN's public API for historical game data and player statistics, Google Gemini AI for game previews with player insights, and OpenAI for AI-powered market insights. The platform supports **NFL, NBA, NHL, and Soccer (Premier League)** markets, displaying them in a hierarchical structure with automatic categorization, centralized team name normalization, AI-generated game analysis with player highlights, multi-sportsbook odds comparison, and historical accuracy comparisons. The application provides a mobile-optimized experience, visual indicators for market assessment, and comprehensive market context to make informed trading decisions.
 
-The business vision is to offer a user-friendly platform for exploring NFL prediction markets, enhancing accessibility and understanding for both casual fans and serious traders. By leveraging AI for insights, comparing predictions to actual results, and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
+The business vision is to offer a user-friendly platform for exploring multi-sport prediction markets, enhancing accessibility and understanding for both casual fans and serious traders across major sports. By leveraging AI for insights, comparing predictions to actual results, supporting multiple sports leagues, and focusing on intuitive design, the project seeks to carve a niche in the sports prediction market analysis space.
 
 # Recent Changes
+
+**November 11, 2025 - Multi-Sport Platform Expansion**
+- Expanded platform from NFL-only to multi-sport support: **NFL, NBA, NHL, and Soccer (Premier League)**
+- Created centralized `sport_config.py` with complete team rosters (32 NFL, 30 NBA, 32 NHL, 20 Soccer teams) and variation maps for consistent team name normalization across all services
+- Updated KalshiService, OddsAPIService, and ESPNService to accept sport parameter and use centralized team data with sport-specific endpoints
+- Implemented manual per-sport service caching (`_SERVICE_CACHE`) to ensure distinct Kalshi/OddsAPI/ESPN instances per sport, avoiding Streamlit cache_resource issues
+- Added multi-sport aggregation for "All" view that combines events from all sports with proper `_sport` metadata tagging
+- Updated navigation to replace MLB with Soccer and enable sport filtering (All, NFL, NBA, Soccer, NHL)
+- Fixed critical navigation bugs:
+  - Detail links now pass event's actual sport (from `_sport` metadata) instead of current filter
+  - Added robust legacy link handling with auto-detection that searches all sports when receiving invalid sport parameter
+- Updated detail page for sport-specific stats using stat_categories from config (passing for NFL, points for NBA, goals for NHL/Soccer)
+- Architect-reviewed and production-ready multi-sport core implementation
 
 **November 6, 2025 - The Odds API Migration & Player Stats Integration**
 - Migrated sportsbook odds from SportsGameOdds API to The Odds API for better reliability and 500 free requests/month
@@ -47,26 +60,37 @@ The application utilizes **Streamlit** for its UI, offering a Python-native, rea
 
 The architecture follows a **service-oriented approach** to separate concerns:
 
-- `kalshi_service.py`: Manages all interactions with the Kalshi API, including data normalization.
-- `odds_api_service.py`: Fetches real-time betting odds from multiple sportsbooks via The Odds API. Includes American odds-to-probability conversion, consensus calculation across bookmakers, best odds discovery, and 5-minute caching to minimize API calls.
-- `espn_service.py`: Fetches historical NFL game results and player statistics from ESPN's public API. Includes methods for team stat leaders, player stats, team rosters, and historical game accuracy comparison.
+- `sport_config.py`: Centralized configuration for all sports (NFL, NBA, NHL, Soccer) containing team rosters, name variations, API sport keys, stat categories, and helper functions for team normalization across all services.
+- `kalshi_service.py`: Manages all interactions with the Kalshi API with multi-sport support. Accepts sport parameter, uses centralized team data for normalization, and builds sport-specific series tickers.
+- `odds_api_service.py`: Fetches real-time betting odds from multiple sportsbooks via The Odds API with multi-sport support. Accepts sport parameter, uses centralized team variations, includes American odds-to-probability conversion, consensus calculation across bookmakers, best odds discovery, and 5-minute caching to minimize API calls.
+- `espn_service.py`: Fetches historical game results and player statistics from ESPN's public API with multi-sport support. Sport-aware BASE_URLs built from config, includes methods for team stat leaders, player stats, team rosters, and historical game accuracy comparison.
 - `gemini_service.py`: Generates AI-powered game previews with player insights using Google Gemini 2.5 Flash. Creates engaging 3-4 sentence summaries highlighting key players, recent stats, and tactical matchups.
 - `openai_service.py`: Handles the generation of AI-powered market analyses.
-- `app.py`: Orchestrates the application logic and serves the presentation layer.
+- `app.py`: Orchestrates the application logic and serves the presentation layer with multi-sport support, manual per-sport service caching, and sport-specific data fetching.
 
 ### Market Normalization Layer
 
 The `KalshiService` includes a pipeline for transforming raw Kalshi API data into a display-ready format:
 
 - **Category Mapping**: Parses event tickers to map markets into high-level categories (e.g., "Games", "Passing Yards").
-- **Team Name Resolution**: Uses a comprehensive NFL team code dictionary to expand abbreviations and normalize team names.
+- **Team Name Resolution**: Uses centralized sport_config team dictionaries with comprehensive variation maps to expand abbreviations and normalize team names across all sports (NFL, NBA, NHL, Soccer).
 - **Display Name Generation**: Prioritizes API titles/subtitles, with fallbacks and team abbreviation expansion for clarity.
 - **Probability & Volume Calculation**: Implements a fallback chain for probability (yes_bid → last_price → mid_price) and volume (volume → volume_24h → liquidity).
 - **Market Pairing & Combination**: Groups and combines opposing contracts for the same game into a single UI element, calculating probabilities and combining relevant data for both teams.
 
+### Multi-Sport Service Management
+
+The application implements **manual per-sport service caching** to ensure correct sport-specific instances:
+
+- **Service Accessor Pattern**: `get_kalshi(sport)`, `get_odds_api(sport)`, `get_espn(sport)` functions provide sport-specific service instances
+- **Manual Caching Dictionary**: `_SERVICE_CACHE` stores distinct instances per sport to avoid Streamlit's @st.cache_resource issues with sport-specific initialization
+- **Sport Metadata Tagging**: Events in "All" view include `_sport` metadata for proper routing to detail pages
+- **Legacy Link Handling**: Detail page validates sport parameter and auto-detects event's actual sport by searching all sports when invalid sport received
+- **Sport-Specific Stats**: Detail page uses sport_config stat_categories (e.g., "passing" for NFL, "points" for NBA, "goals" for NHL/Soccer)
+
 ## Pagination Implementation
 
-The application uses **server-side cursor-based pagination** for fetching market data from the Kalshi API. This ensures fresh data for each page and consistent page sizes by specifically requesting `series_ticker=KXNFLGAME`.
+The application uses **server-side cursor-based pagination** for fetching market data from the Kalshi API. This ensures fresh data for each page and consistent page sizes by requesting sport-specific series tickers (e.g., `series_ticker=KXNFLGAME` for NFL, `series_ticker=KXNBAGAME` for NBA, etc.). The "All" view aggregates events from all sports by fetching each sport's markets separately and combining them with `_sport` metadata tagging.
 
 ## Data Visualization
 
@@ -103,15 +127,25 @@ The application integrates with two AI services:
 
 - **Endpoint**: `https://api.elections.kalshi.com/trade-api/v2`
 - **Authentication**: Uses unauthenticated public endpoints.
-- **Purpose**: Fetches Professional Football Game prediction markets (`series_ticker=KXNFLGAME`), detailed market information, historical price data, and order books.
-- **Filtering**: Specifically uses `series_ticker=KXNFLGAME` to retrieve only game outcome contracts.
+- **Purpose**: Fetches prediction markets for multiple sports, detailed market information, historical price data, and order books.
+- **Multi-Sport Support**: 
+  - NFL: `series_ticker=KXNFLGAME`
+  - NBA: `series_ticker=KXNBAGAME`
+  - NHL: `series_ticker=KXNHLGAME`
+  - Soccer: `series_ticker=KXSOCCERGAME`
+- **Filtering**: Uses sport-specific series tickers to retrieve game outcome contracts for each league.
 
 ### The Odds API
 
-- **Endpoint**: `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds`
+- **Endpoint**: `https://api.the-odds-api.com/v4/sports/{sport_key}/odds`
 - **Authentication**: Requires `ODDS_API_KEY` environment variable (query parameter).
 - **Free Tier**: 500 requests per month with no credit card required
-- **Purpose**: Fetches real-time betting odds from multiple sportsbooks for NFL games.
+- **Multi-Sport Support**:
+  - NFL: `americanfootball_nfl`
+  - NBA: `basketball_nba`
+  - NHL: `icehockey_nhl`
+  - Soccer: `soccer_epl` (Premier League)
+- **Purpose**: Fetches real-time betting odds from multiple sportsbooks for multi-sport games.
 - **Features**:
   - **Multi-Sportsbook Coverage**: Aggregates odds from 70+ bookmakers including DraftKings, FanDuel, BetMGM, Caesars, and more
   - **Live Odds**: Real-time moneyline (h2h), spreads, and totals
@@ -133,9 +167,14 @@ The application integrates with two AI services:
 
 ### ESPN Public API
 
-- **Endpoint**: `http://site.api.espn.com/apis/site/v2/sports/football/nfl`
+- **Endpoint**: `http://site.api.espn.com/apis/site/v2/sports/{sport}/{league}`
 - **Authentication**: No authentication required (unofficial public API).
-- **Purpose**: Fetches historical NFL game results and player statistics for comprehensive game analysis.
+- **Multi-Sport Support**:
+  - NFL: `football/nfl`
+  - NBA: `basketball/nba`
+  - NHL: `hockey/nhl`
+  - Soccer: `soccer/eng.1` (Premier League)
+- **Purpose**: Fetches historical game results and player statistics for comprehensive multi-sport game analysis.
 - **Features**:
   - **Game Results**: Scoreboard data, final scores, winners, and game status for accuracy comparison
   - **Player Statistics**: Team stat leaders by category (passing, rushing, receiving, defense)
@@ -143,7 +182,7 @@ The application integrates with two AI services:
   - **Historical Data**: Access to games dating back to 1999+
   - **Fuzzy Matching**: Team name matching handles variations between different APIs
   - **Flexible Search**: ±2 day search window for game date flexibility
-  - **Team Mapping**: Comprehensive NFL team ID mapping for all 32 teams
+  - **Team Mapping**: Comprehensive multi-sport team ID mapping (32 NFL, 30 NBA, 32 NHL, 20 Soccer teams)
 - **New Methods**:
   - `get_team_leaders(team_name, category)`: Returns top 3 stat leaders for a team
   - `get_player_stats(player_id)`: Fetches detailed statistics for individual players
