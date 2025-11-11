@@ -12,6 +12,7 @@ from kalshi_service import KalshiService
 from espn_service import ESPNService
 from odds_api_service import OddsAPIService
 from gemini_service import GeminiService
+from prediction_service import PredictionService
 
 st.set_page_config(page_title="OddSense",
                    page_icon="📊",
@@ -353,6 +354,11 @@ def init_state():
     st.session_state.setdefault("search", "")
     st.session_state.setdefault("events_per_page", 12)
     st.session_state.setdefault("p", 1)
+    
+    # Initialize user session for predictions
+    if "user_session_id" not in st.session_state:
+        prediction_service = PredictionService()
+        st.session_state.user_session_id = prediction_service.generate_session_id()
 
 
 def pct(x: Optional[float]) -> str:
@@ -808,6 +814,143 @@ def page_detail():
                         unsafe_allow_html=True)
         else:
             st.warning("AI game preview unavailable. Check back soon!")
+
+    # Community Predictions Section
+    st.divider()
+    st.subheader("🎯 Make Your Prediction")
+    
+    prediction_service = PredictionService()
+    user_session_id = st.session_state.get("user_session_id", "")
+    
+    # Get existing prediction if any
+    existing_prediction = prediction_service.get_user_prediction(
+        user_session_id, event_ticker
+    )
+    
+    # Get community consensus
+    community_data = prediction_service.get_community_consensus(event_ticker)
+    
+    # Prediction form
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown(f"""
+            <div style="
+                background: #1e293b;
+                padding: 1.5rem;
+                border-radius: 8px;
+                border: 1px solid #334155;
+            ">
+                <div style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem;">
+                    Who will win this game?
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Team selection
+        default_winner = existing_prediction.predicted_winner if existing_prediction else away_team_name
+        predicted_winner = st.radio(
+            "Select winner",
+            [away_team_name, home_team_name],
+            index=0 if default_winner == away_team_name else 1,
+            key=f"winner_{event_ticker}"
+        )
+        
+        # Confidence slider
+        default_confidence = existing_prediction.confidence if existing_prediction else 50.0
+        confidence = st.slider(
+            "How confident are you? (%)",
+            min_value=50,
+            max_value=100,
+            value=int(default_confidence),
+            step=5,
+            key=f"confidence_{event_ticker}",
+            help="50% = coin flip, 100% = absolutely certain"
+        )
+        
+        # Save button
+        if st.button("💾 Save My Prediction", use_container_width=True, type="primary"):
+            try:
+                prediction_service.save_prediction(
+                    session_id=user_session_id,
+                    event_ticker=event_ticker,
+                    sport=current_sport,
+                    home_team=home_team_name,
+                    away_team=away_team_name,
+                    predicted_winner=predicted_winner,
+                    confidence=float(confidence),
+                    kalshi_prob=primary_prob,
+                    sportsbook_consensus=sportsbook_prob,
+                    game_date=close_dt,
+                    close_date=close_dt
+                )
+                st.success(f"✅ Prediction saved! You picked {predicted_winner} with {confidence}% confidence")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error saving prediction: {str(e)}")
+    
+    with col2:
+        # Community consensus display
+        if community_data and community_data["total_predictions"] > 0:
+            st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    padding: 1.5rem;
+                    border-radius: 8px;
+                    color: white;
+                ">
+                    <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 0.5rem;">
+                        👥 Community Consensus
+                    </div>
+                    <div style="font-size: 1.5rem; font-weight: 700;">
+                        {total} predictions
+                    </div>
+                </div>
+            """.format(total=community_data["total_predictions"]), unsafe_allow_html=True)
+            
+            st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+            
+            # Community prediction breakdown
+            home_pct = community_data["home_percentage"]
+            away_pct = community_data["away_percentage"]
+            
+            st.markdown(f"""
+                <div style="
+                    background: #1e293b;
+                    padding: 1rem;
+                    border-radius: 8px;
+                    border: 1px solid #334155;
+                ">
+                    <div style="margin-bottom: 0.75rem;">
+                        <div style="color: #94a3b8; font-size: 0.85rem;">{away_team_name}</div>
+                        <div style="color: #f1f5f9; font-size: 1.25rem; font-weight: 600;">{away_pct:.0f}%</div>
+                        <div style="color: #64748b; font-size: 0.8rem;">{community_data["away_count"]} picks</div>
+                    </div>
+                    <div>
+                        <div style="color: #94a3b8; font-size: 0.85rem;">{home_team_name}</div>
+                        <div style="color: #f1f5f9; font-size: 1.25rem; font-weight: 600;">{home_pct:.0f}%</div>
+                        <div style="color: #64748b; font-size: 0.8rem;">{community_data["home_count"]} picks</div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("Be the first to make a prediction for this game!")
+        
+        # Show user's existing prediction if any
+        if existing_prediction:
+            st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style="
+                    background: #10b981;
+                    padding: 0.75rem;
+                    border-radius: 6px;
+                    color: white;
+                    font-size: 0.85rem;
+                    text-align: center;
+                ">
+                    ✅ Your prediction: {existing_prediction.predicted_winner} ({int(existing_prediction.confidence)}%)
+                </div>
+            """, unsafe_allow_html=True)
 
     # Team Stat Leaders Section
     st.divider()
