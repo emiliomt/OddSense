@@ -8,7 +8,21 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable not set")
 
-engine = create_engine(DATABASE_URL, echo=False)
+# PostgreSQL SSL configuration for Neon/Replit
+# Append SSL mode to URL if not already present
+if "?" not in DATABASE_URL and "sslmode" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL + "?sslmode=require"
+elif "sslmode" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL + "&sslmode=require"
+
+engine = create_engine(
+    DATABASE_URL, 
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_size=5,
+    max_overflow=10
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

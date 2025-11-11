@@ -834,18 +834,7 @@ def page_detail():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown(f"""
-            <div style="
-                background: #1e293b;
-                padding: 1.5rem;
-                border-radius: 8px;
-                border: 1px solid #334155;
-            ">
-                <div style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem;">
-                    Who will win this game?
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown("**Who will win this game?**")
         
         # Team selection
         default_winner = existing_prediction.predicted_winner if existing_prediction else away_team_name
@@ -853,7 +842,8 @@ def page_detail():
             "Select winner",
             [away_team_name, home_team_name],
             index=0 if default_winner == away_team_name else 1,
-            key=f"winner_{event_ticker}"
+            key=f"winner_{event_ticker}",
+            label_visibility="collapsed"
         )
         
         # Confidence slider
@@ -869,9 +859,9 @@ def page_detail():
         )
         
         # Save button
-        if st.button("💾 Save My Prediction", use_container_width=True, type="primary"):
+        if st.button("💾 Save My Prediction", use_container_width=True, type="primary", key=f"save_btn_{event_ticker}"):
             try:
-                prediction_service.save_prediction(
+                saved_prediction = prediction_service.save_prediction(
                     session_id=user_session_id,
                     event_ticker=event_ticker,
                     sport=current_sport,
@@ -884,8 +874,9 @@ def page_detail():
                     game_date=close_dt,
                     close_date=close_dt
                 )
-                st.success(f"✅ Prediction saved! You picked {predicted_winner} with {confidence}% confidence")
-                st.rerun()
+                st.success(f"✅ Prediction saved! You picked {predicted_winner} with {int(confidence)}% confidence")
+                # Update existing_prediction with the saved value to show correct data
+                existing_prediction = saved_prediction
             except Exception as e:
                 st.error(f"Error saving prediction: {str(e)}")
     

@@ -68,14 +68,35 @@ class PredictionService:
         """Save a user prediction"""
         db = get_db()
         try:
-            # Get or create user session
-            user_session = self.get_or_create_session(session_id)
+            # Get user session within same DB session
+            user_session = db.query(UserSession).filter(
+                UserSession.session_id == session_id
+            ).first()
             
-            # Get or create game
-            game = self.get_or_create_game(
-                event_ticker, sport, home_team, away_team,
-                game_date, close_date
-            )
+            if not user_session:
+                user_session = UserSession(session_id=session_id)
+                db.add(user_session)
+                db.flush()  # Get ID without committing
+            
+            # Update last active
+            user_session.last_active = datetime.now(timezone.utc)
+            
+            # Get or create game within same DB session
+            game = db.query(Game).filter(
+                Game.event_ticker == event_ticker
+            ).first()
+            
+            if not game:
+                game = Game(
+                    event_ticker=event_ticker,
+                    sport=sport,
+                    home_team=home_team,
+                    away_team=away_team,
+                    game_date=game_date,
+                    close_date=close_date
+                )
+                db.add(game)
+                db.flush()  # Get ID without committing
             
             # Check if prediction already exists for this session + game
             existing = db.query(Prediction).filter(
@@ -90,9 +111,6 @@ class PredictionService:
                 existing.kalshi_probability = kalshi_prob
                 existing.sportsbook_consensus = sportsbook_consensus
                 existing.created_at = datetime.now(timezone.utc)
-                db.commit()
-                db.refresh(existing)
-                return existing
             else:
                 # Create new prediction
                 prediction = Prediction(
@@ -105,12 +123,11 @@ class PredictionService:
                 )
                 db.add(prediction)
                 
-                # Update user session stats
-                user_session.total_predictions += 1
-                
-                db.commit()
-                db.refresh(prediction)
-                return prediction
+                # Update user session stats (now within same session)
+                user_session.total_predictions = user_session.total_predictions + 1
+            
+            db.commit()
+            return existing if existing else prediction
         finally:
             db.close()
     
