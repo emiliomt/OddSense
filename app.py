@@ -9,7 +9,7 @@ import streamlit as st
 
 from espn_lookup import find_game_id
 from kalshi_service import KalshiService
-from espn_service import espn
+from espn_service import ESPNService
 from odds_api_service import OddsAPIService
 from gemini_service import GeminiService
 
@@ -356,7 +356,7 @@ def render_top_nav(current_page: str = "list", current_sport: str = "all"):
                 ("all", "🏠 All Markets"),
                 ("nfl", "🏈 NFL"),
                 ("nba", "🏀 NBA"),
-                ("mlb", "⚾ MLB"),
+                ("soccer", "⚽ Soccer"),
                 ("nhl", "🏒 NHL")
             ]
             
@@ -1219,7 +1219,7 @@ def page_detail():
 
         # Fetch candlestick data
         candlesticks = kalshi.get_market_candlesticks(
-            series_ticker=kalshi.SERIES_TICKER_GAME,
+            series_ticker=kalshi.series_ticker,
             ticker=ticker,
             period_interval=60  # 1-hour candles
         )

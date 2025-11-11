@@ -1,24 +1,33 @@
 """
 ESPN API Service
-Fetches historical NFL game data from ESPN's unofficial public API.
+Fetches historical game data from ESPN's unofficial public API.
+Supports NFL, NBA, NHL, and Soccer.
 """
 
 import requests
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 import logging
+from sport_config import get_sport_config, get_teams_for_sport
 
 logger = logging.getLogger(__name__)
 
 
 class ESPNService:
-    """Service for fetching NFL game data from ESPN API."""
+    """Service for fetching multi-sport game data from ESPN API."""
     
-    BASE_URL = "http://site.api.espn.com/apis/site/v2/sports/football/nfl"
-    
-    CORE_API_URL = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl"
-    
-    def __init__(self):
+    def __init__(self, sport: str = "nfl"):
+        self.sport = sport.lower()
+        self.sport_config = get_sport_config(self.sport)
+        
+        # Build sport-specific URLs from config
+        espn_sport = self.sport_config.get("espn_sport", "football")
+        espn_league = self.sport_config.get("espn_league", "nfl")
+        
+        self.BASE_URL = f"http://site.api.espn.com/apis/site/v2/sports/{espn_sport}/{espn_league}"
+        self.CORE_API_URL = f"https://sports.core.api.espn.com/v2/sports/{espn_sport}/leagues/{espn_league}"
+        
+        # Initialize HTTP session
         self.session = requests.Session()
         self.session.headers.update({
             'Accept': 'application/json',
@@ -454,63 +463,70 @@ class ESPNService:
     
     def get_team_id_by_name(self, team_name: str) -> Optional[str]:
         """
-        Map team name to ESPN team ID.
+        Map team name to ESPN team ID (sport-specific).
         
         Returns:
             ESPN team ID as string, or None if not found
         """
-        # ESPN team ID mapping
-        team_map = {
-            'Arizona Cardinals': '22', 'Cardinals': '22',
-            'Atlanta Falcons': '1', 'Falcons': '1',
-            'Baltimore Ravens': '33', 'Ravens': '33',
-            'Buffalo Bills': '2', 'Bills': '2',
-            'Carolina Panthers': '29', 'Panthers': '29',
-            'Chicago Bears': '3', 'Bears': '3',
-            'Cincinnati Bengals': '4', 'Bengals': '4',
-            'Cleveland Browns': '5', 'Browns': '5',
-            'Dallas Cowboys': '6', 'Cowboys': '6',
-            'Denver Broncos': '7', 'Broncos': '7',
-            'Detroit Lions': '8', 'Lions': '8',
-            'Green Bay Packers': '9', 'Packers': '9',
-            'Houston Texans': '34', 'Texans': '34',
-            'Indianapolis Colts': '11', 'Colts': '11',
-            'Jacksonville Jaguars': '30', 'Jaguars': '30',
-            'Kansas City Chiefs': '12', 'Chiefs': '12',
-            'Las Vegas Raiders': '13', 'Raiders': '13', 'Oakland Raiders': '13',
-            'Los Angeles Chargers': '24', 'Chargers': '24',
-            'Los Angeles Rams': '14', 'Rams': '14',
-            'Miami Dolphins': '15', 'Dolphins': '15',
-            'Minnesota Vikings': '16', 'Vikings': '16',
-            'New England Patriots': '17', 'Patriots': '17',
-            'New Orleans Saints': '18', 'Saints': '18',
-            'New York Giants': '19', 'Giants': '19',
-            'New York Jets': '20', 'Jets': '20',
-            'Philadelphia Eagles': '21', 'Eagles': '21',
-            'Pittsburgh Steelers': '23', 'Steelers': '23',
-            'San Francisco 49ers': '25', '49ers': '25',
-            'Seattle Seahawks': '26', 'Seahawks': '26',
-            'Tampa Bay Buccaneers': '27', 'Buccaneers': '27',
-            'Tennessee Titans': '10', 'Titans': '10',
-            'Washington Commanders': '28', 'Commanders': '28', 'Washington': '28',
+        # ESPN team ID mappings by sport
+        # NOTE: These IDs are ESPN-specific and different from other APIs
+        nfl_ids = {
+            'Arizona Cardinals': '22', 'Atlanta Falcons': '1', 'Baltimore Ravens': '33',
+            'Buffalo Bills': '2', 'Carolina Panthers': '29', 'Chicago Bears': '3',
+            'Cincinnati Bengals': '4', 'Cleveland Browns': '5', 'Dallas Cowboys': '6',
+            'Denver Broncos': '7', 'Detroit Lions': '8', 'Green Bay Packers': '9',
+            'Houston Texans': '34', 'Indianapolis Colts': '11', 'Jacksonville Jaguars': '30',
+            'Kansas City Chiefs': '12', 'Las Vegas Raiders': '13', 'Los Angeles Chargers': '24',
+            'Los Angeles Rams': '14', 'Miami Dolphins': '15', 'Minnesota Vikings': '16',
+            'New England Patriots': '17', 'New Orleans Saints': '18', 'New York Giants': '19',
+            'New York Jets': '20', 'Philadelphia Eagles': '21', 'Pittsburgh Steelers': '23',
+            'San Francisco 49ers': '25', 'Seattle Seahawks': '26', 'Tampa Bay Buccaneers': '27',
+            'Tennessee Titans': '10', 'Washington Commanders': '28',
         }
         
-        # Try direct match first
-        if team_name in team_map:
-            return team_map[team_name]
+        # Select appropriate team map based on sport
+        if self.sport == "nfl":
+            team_map = nfl_ids
+        else:
+            # TODO: Add ESPN team IDs for NBA, NHL, Soccer
+            # For now, return None for unsupported sports
+            logger.warning(f"ESPN team IDs not yet implemented for {self.sport}")
+            return None
         
-        # Try case-insensitive match
+        # Normalize team name using centralized data
+        teams_data = get_teams_for_sport(self.sport)
+        
+        # Try to find canonical name from variations
+        canonical_name = None
         team_name_lower = team_name.lower()
-        for key, value in team_map.items():
-            if key.lower() == team_name_lower:
-                return value
         
-        # Try partial match (team nickname)
+        for name, data in teams_data.items():
+            # Check canonical name
+            if name.lower() == team_name_lower:
+                canonical_name = name
+                break
+            # Check abbreviation
+            if data["abbr"].lower() == team_name_lower:
+                canonical_name = name
+                break
+            # Check variations
+            for variation in data["variations"]:
+                if variation.lower() == team_name_lower:
+                    canonical_name = name
+                    break
+            if canonical_name:
+                break
+        
+        # Look up ESPN ID using canonical name
+        if canonical_name and canonical_name in team_map:
+            return team_map[canonical_name]
+        
+        # Fallback: partial match
         for key, value in team_map.items():
             if team_name_lower in key.lower() or key.lower() in team_name_lower:
                 return value
         
-        logger.warning(f"Could not find ESPN team ID for: {team_name}")
+        logger.warning(f"Could not find ESPN team ID for: {team_name} ({self.sport})")
         return None
     
     def get_team_leaders(self, team_name: str, category: str = 'passing') -> List[Dict]:
@@ -560,5 +576,5 @@ class ESPNService:
             return []
 
 
-# Global instance
-espn = ESPNService()
+# Note: Global instance removed - create sport-specific instances as needed
+# Example: espn_nfl = ESPNService("nfl"), espn_nba = ESPNService("nba")

@@ -5,11 +5,12 @@ from difflib import get_close_matches
 from typing import Dict, List, Optional, Tuple
 
 import requests
+from sport_config import get_sport_config, get_teams_for_sport
 
 
 class KalshiService:
     """
-    Unauthenticated access to Kalshi NFL markets.
+    Unauthenticated access to Kalshi sports markets (NFL, NBA, NHL, Soccer).
 
     Output per event:
       - ONE primary Winner market row: `winner_primary`
@@ -22,46 +23,21 @@ class KalshiService:
     """
 
     BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
-    SERIES_TICKER_GAME = "KXNFLGAME"
 
-    TEAM_MAP: Dict[str, str] = {
-        "ARI": "Arizona Cardinals",
-        "ATL": "Atlanta Falcons",
-        "BAL": "Baltimore Ravens",
-        "BUF": "Buffalo Bills",
-        "CAR": "Carolina Panthers",
-        "CHI": "Chicago Bears",
-        "CIN": "Cincinnati Bengals",
-        "CLE": "Cleveland Browns",
-        "DAL": "Dallas Cowboys",
-        "DEN": "Denver Broncos",
-        "DET": "Detroit Lions",
-        "GB": "Green Bay Packers",
-        "HOU": "Houston Texans",
-        "IND": "Indianapolis Colts",
-        "JAX": "Jacksonville Jaguars",
-        "KC": "Kansas City Chiefs",
-        "LAC": "Los Angeles Chargers",
-        "LAR": "Los Angeles Rams",
-        "LV": "Las Vegas Raiders",
-        "MIA": "Miami Dolphins",
-        "MIN": "Minnesota Vikings",
-        "NE": "New England Patriots",
-        "NO": "New Orleans Saints",
-        "NYG": "New York Giants",
-        "NYJ": "New York Jets",
-        "PHI": "Philadelphia Eagles",
-        "PIT": "Pittsburgh Steelers",
-        "SEA": "Seattle Seahawks",
-        "SF": "San Francisco 49ers",
-        "TB": "Tampa Bay Buccaneers",
-        "TEN": "Tennessee Titans",
-        "WAS": "Washington Commanders",
-    }
-    TEAM_ABBRS = set(TEAM_MAP.keys())
-    TEAM_NAMES = list(TEAM_MAP.values())
-
-    def __init__(self) -> None:
+    def __init__(self, sport: str = "nfl") -> None:
+        self.sport = sport.lower()
+        self.sport_config = get_sport_config(self.sport)
+        self.series_ticker = self.sport_config.get("kalshi_series", "KXNFLGAME")
+        
+        # Get centralized team data
+        teams_data = get_teams_for_sport(self.sport)
+        
+        # Build team map (abbr -> full name) for this sport
+        self.TEAM_MAP = {data["abbr"]: name for name, data in teams_data.items()}
+        
+        self.TEAM_ABBRS = set(self.TEAM_MAP.keys())
+        self.TEAM_NAMES = list(self.TEAM_MAP.values())
+        
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
@@ -92,29 +68,27 @@ class KalshiService:
         except Exception:
             return None
 
-    @classmethod
-    def _normalize_team_name(cls, s: str) -> Optional[str]:
+    def _normalize_team_name(self, s: str) -> Optional[str]:
         raw = (s or "").strip()
         if not raw:
             return None
         t = raw.lower()
         # abbr
-        for ab, full in cls.TEAM_MAP.items():
+        for ab, full in self.TEAM_MAP.items():
             if t == ab.lower():
                 return full
         # contains city or nickname
-        for full in cls.TEAM_NAMES:
+        for full in self.TEAM_NAMES:
             if " " in full:
                 city, nick = full.split(" ", 1)
                 if city.lower() in t or nick.lower() in t:
                     return full
         # close match
-        cand = get_close_matches(raw, cls.TEAM_NAMES, n=1, cutoff=0.6)
+        cand = get_close_matches(raw, self.TEAM_NAMES, n=1, cutoff=0.6)
         return cand[0] if cand else None
 
-    @classmethod
     def _extract_event_name_from_text(
-            cls, markets: List[Dict]) -> Optional[Tuple[str, str, str]]:
+            self, markets: List[Dict]) -> Optional[Tuple[str, str, str]]:
         for m in markets:
             head = (m.get("title") or "").split(":", 1)[0]
             sub = (m.get("subtitle") or "")
@@ -123,21 +97,20 @@ class KalshiService:
             if not mobj:
                 continue
             away_raw, home_raw = mobj.group(1), mobj.group(2)
-            away = cls._normalize_team_name(away_raw) or away_raw.strip()
-            home = cls._normalize_team_name(home_raw) or home_raw.strip()
+            away = self._normalize_team_name(away_raw) or away_raw.strip()
+            home = self._normalize_team_name(home_raw) or home_raw.strip()
             return away, home, f"{away} at {home}"
         return None
 
-    @classmethod
     def _decode_home_away_from_event_ticker(
-            cls, event_ticker: str) -> Optional[Tuple[str, str]]:
+            self, event_ticker: str) -> Optional[Tuple[str, str]]:
         if not event_ticker:
             return None
         codes = re.findall(r"[A-Z]{2,3}", event_ticker.upper())
-        valid = [c for c in codes if c in cls.TEAM_ABBRS]
+        valid = [c for c in codes if c in self.TEAM_ABBRS]
         if len(valid) >= 2:
             away3, home3 = valid[-2], valid[-1]
-            return cls.TEAM_MAP[away3], cls.TEAM_MAP[home3]
+            return self.TEAM_MAP[away3], self.TEAM_MAP[home3]
         return None
 
     def _subject_from_ticker_suffix(self,
@@ -164,11 +137,11 @@ class KalshiService:
 
     # ---------------- Fetch & combine ----------------
 
-    def get_nfl_game_markets(self,
-                             limit: int = 500,
-                             cursor: Optional[str] = None) -> Dict:
+    def get_game_markets(self,
+                         limit: int = 500,
+                         cursor: Optional[str] = None) -> Dict:
         params = {
-            "series_ticker": self.SERIES_TICKER_GAME,
+            "series_ticker": self.series_ticker,
             "status": "open",
             "limit": max(1, min(limit, 1000))
         }
@@ -183,7 +156,7 @@ class KalshiService:
     def get_all_open_games(self, max_pages: int = 20) -> List[Dict]:
         out, cursor, pages = [], None, 0
         while pages < max_pages:
-            page = self.get_nfl_game_markets(limit=500, cursor=cursor)
+            page = self.get_game_markets(limit=500, cursor=cursor)
             out.extend(page["markets"])
             cursor = page["cursor"]
             pages += 1
