@@ -1,5 +1,6 @@
 # app.py
 import os
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -834,34 +835,37 @@ def page_detail():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("**Who will win this game?**")
-        
-        # Team selection
-        default_winner = existing_prediction.predicted_winner if existing_prediction else away_team_name
-        predicted_winner = st.radio(
-            "Select winner",
-            [away_team_name, home_team_name],
-            index=0 if default_winner == away_team_name else 1,
-            key=f"winner_{event_ticker}",
-            label_visibility="collapsed"
-        )
-        
-        # Confidence slider
-        default_confidence = existing_prediction.confidence if existing_prediction else 50.0
-        confidence = st.slider(
-            "How confident are you? (%)",
-            min_value=50,
-            max_value=100,
-            value=int(default_confidence),
-            step=5,
-            key=f"confidence_{event_ticker}",
-            help="50% = coin flip, 100% = absolutely certain"
-        )
-        
-        # Save button
-        if st.button("💾 Save My Prediction", use_container_width=True, type="primary", key=f"save_btn_{event_ticker}"):
+        # Use Streamlit form to properly capture widget state
+        with st.form(key=f"prediction_form_{event_ticker}"):
+            st.markdown("**Who will win this game?**")
+            
+            # Team selection
+            default_winner = existing_prediction.predicted_winner if existing_prediction else away_team_name
+            predicted_winner = st.radio(
+                "Select winner",
+                [away_team_name, home_team_name],
+                index=0 if default_winner == away_team_name else 1,
+                label_visibility="collapsed"
+            )
+            
+            # Confidence slider
+            default_confidence = existing_prediction.confidence if existing_prediction else 50.0
+            confidence = st.slider(
+                "How confident are you? (%)",
+                min_value=50,
+                max_value=100,
+                value=int(default_confidence),
+                step=5,
+                help="50% = coin flip, 100% = absolutely certain"
+            )
+            
+            # Save button (form submit button)
+            submitted = st.form_submit_button("💾 Save My Prediction", use_container_width=True, type="primary")
+            
+        # Handle form submission outside the form block
+        if submitted:
             try:
-                saved_prediction = prediction_service.save_prediction(
+                prediction_service.save_prediction(
                     session_id=user_session_id,
                     event_ticker=event_ticker,
                     sport=current_sport,
@@ -875,8 +879,9 @@ def page_detail():
                     close_date=close_dt
                 )
                 st.success(f"✅ Prediction saved! You picked {predicted_winner} with {int(confidence)}% confidence")
-                # Update existing_prediction with the saved value to show correct data
-                existing_prediction = saved_prediction
+                # Trigger rerun to show updated prediction
+                time.sleep(0.5)
+                st.rerun()
             except Exception as e:
                 st.error(f"Error saving prediction: {str(e)}")
     
